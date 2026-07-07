@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.co_parenting_calendar.feature.calendar.domain.CalendarDay
 import com.example.co_parenting_calendar.feature.calendar.domain.weekdayOrder
+import com.example.co_parenting_calendar.feature.parent.domain.Parent
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -32,7 +34,8 @@ fun MonthGrid(
     days: List<CalendarDay>,
     firstDayOfWeek: DayOfWeek,
     selectedDate: LocalDate,
-    datesWithEvents: Set<LocalDate>,
+    datesWithActivities: Set<LocalDate>,
+    parentAssignments: Map<LocalDate, Parent>,
     onDayClick: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -44,7 +47,8 @@ fun MonthGrid(
                     DayCell(
                         day = day,
                         isSelected = day.date == selectedDate,
-                        hasEvent = datesWithEvents.contains(day.date),
+                        hasActivity = datesWithActivities.contains(day.date),
+                        owningParent = parentAssignments[day.date],
                         onClick = { onDayClick(day.date) },
                         modifier = Modifier.weight(1f)
                     )
@@ -75,7 +79,8 @@ private fun WeekdayHeader(firstDayOfWeek: DayOfWeek, modifier: Modifier = Modifi
 private fun DayCell(
     day: CalendarDay,
     isSelected: Boolean,
-    hasEvent: Boolean,
+    hasActivity: Boolean,
+    owningParent: Parent?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -83,6 +88,10 @@ private fun DayCell(
         modifier = modifier
             .aspectRatio(1f)
             .padding(2.dp)
+            .background(
+                color = owningParent?.let { Color(it.colorArgb) }?.copy(alpha = 0.18f) ?: Color.Transparent,
+                shape = RoundedCornerShape(8.dp)
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -112,7 +121,7 @@ private fun DayCell(
                     .padding(top = 2.dp)
                     .size(6.dp)
                     .background(
-                        color = if (hasEvent) MaterialTheme.colorScheme.tertiary else Color.Transparent,
+                        color = if (hasActivity) MaterialTheme.colorScheme.tertiary else Color.Transparent,
                         shape = CircleShape
                     )
             )

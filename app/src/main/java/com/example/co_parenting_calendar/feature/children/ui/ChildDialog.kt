@@ -1,9 +1,11 @@
-package com.example.co_parenting_calendar.feature.calendar.ui
+package com.example.co_parenting_calendar.feature.children.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -13,54 +15,51 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.example.co_parenting_calendar.feature.calendar.domain.Event
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import androidx.compose.ui.unit.dp
+import com.example.co_parenting_calendar.core.designsystem.ColorSwatchPicker
+import com.example.co_parenting_calendar.core.designsystem.colorPalette
+import com.example.co_parenting_calendar.feature.children.domain.Child
 import java.util.UUID
 
 @Composable
-fun EventDialog(
-    date: LocalDate,
-    initialEvent: Event?,
+fun ChildDialog(
+    initialChild: Child?,
     onDismiss: () -> Unit,
-    onSave: (Event) -> Unit,
+    onSave: (Child) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
-    var title by remember { mutableStateOf(initialEvent?.title ?: "") }
-    var notes by remember { mutableStateOf(initialEvent?.notes ?: "") }
+    var name by remember { mutableStateOf(initialChild?.name ?: "") }
+    var selectedColor by remember { mutableStateOf(initialChild?.colorArgb ?: colorPalette.first()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initialEvent == null) "Add event" else "Edit event") },
+        title = { Text(if (initialChild == null) "Add child" else "Edit child") },
         text = {
             Column {
-                Text(date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.getDefault())))
                 OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Notes (optional)") },
-                    modifier = Modifier.fillMaxWidth()
+                Text(
+                    text = "Colour",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                 )
+                ColorSwatchPicker(selectedColor = selectedColor, onColorSelected = { selectedColor = it })
             }
         },
         confirmButton = {
             TextButton(
-                enabled = title.isNotBlank(),
+                enabled = name.isNotBlank(),
                 onClick = {
                     onSave(
-                        Event(
-                            id = initialEvent?.id ?: UUID.randomUUID().toString(),
-                            date = date,
-                            title = title.trim(),
-                            notes = notes.trim()
+                        Child(
+                            id = initialChild?.id ?: UUID.randomUUID().toString(),
+                            name = name.trim(),
+                            colorArgb = selectedColor
                         )
                     )
                 }

@@ -8,10 +8,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -25,9 +23,19 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.example.co_parenting_calendar.feature.calendar.data.EventRepository
-import com.example.co_parenting_calendar.feature.calendar.domain.Event
+import androidx.compose.ui.unit.dp
+import com.example.co_parenting_calendar.core.util.enumSaver
+import com.example.co_parenting_calendar.feature.activity.data.ActivityRepository
+import com.example.co_parenting_calendar.feature.activity.domain.Activity
+import com.example.co_parenting_calendar.feature.activity.domain.activitiesOn
+import com.example.co_parenting_calendar.feature.activity.ui.ActivityDialog
 import com.example.co_parenting_calendar.feature.calendar.domain.generateMonthGrid
+import com.example.co_parenting_calendar.feature.children.data.ChildRepository
+import com.example.co_parenting_calendar.feature.parent.data.ParentAssignmentRepository
+import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
+import com.example.co_parenting_calendar.feature.parent.domain.Parent
+import com.example.co_parenting_calendar.feature.parent.domain.ParentSlot
+import com.example.co_parenting_calendar.feature.parent.ui.ParentAssignmentPanel
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -44,17 +52,35 @@ private val LocalDateSaver = Saver<LocalDate, List<Int>>(
     restore = { LocalDate.of(it[0], it[1], it[2]) }
 )
 
-private sealed class EventDialogState {
-    object Adding : EventDialogState()
-    data class Editing(val event: Event) : EventDialogState()
+private val StringSetSaver = Saver<Set<String>, List<String>>(
+    save = { it.toList() },
+    restore = { it.toSet() }
+)
+
+private sealed class ActivityDialogState {
+    object Adding : ActivityDialogState()
+    data class Editing(val activity: Activity) : ActivityDialogState()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalendarScreen(eventRepository: EventRepository, modifier: Modifier = Modifier) {
+fun CalendarScreen(
+    activityRepository: ActivityRepository,
+    childRepository: ChildRepository,
+    parentRepository: ParentRepository,
+    parentAssignmentRepository: ParentAssignmentRepository,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     var currentMonth by rememberSaveable(stateSaver = YearMonthSaver) { mutableStateOf(YearMonth.now()) }
     var selectedDate by rememberSaveable(stateSaver = LocalDateSaver) { mutableStateOf(LocalDate.now()) }
-    var dialogState by remember { mutableStateOf<EventDialogState?>(null) }
+    var isAssigningParent by rememberSaveable { mutableStateOf(false) }
+    var assigningSlot by rememberSaveable(stateSaver = enumSaver()) { mutableStateOf(ParentSlot.ONE) }
+    var dialogState by remember { mutableStateOf<ActivityDialogState?>(null) }
+
+    var showParentAssignments by rememberSaveable { mutableStateOf(true) }
+    var showActivities by rememberSaveable { mutableStateOf(true) }
+    var hiddenChildIds by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(emptySet()) }
 
     val firstDayOfWeek = remember { WeekFields.of(Locale.getDefault()).firstDayOfWeek }
     val today = remember { LocalDate.now() }
@@ -63,9 +89,29 @@ fun CalendarScreen(eventRepository: EventRepository, modifier: Modifier = Modifi
         currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
     }
 
-    val events = eventRepository.events
-    val datesWithEvents = events.map { it.date }.toSet()
-    val eventsForSelectedDay = events.filter { it.date == selectedDate }
+    val allActivities = activityRepository.activities
+    val children = childRepository.children
+    val parents = parentRepository.parents
+    val parentsBySlot = parents.associateBy { it.slot }
+    val assignments = parentAssignmentRepository.assignments
+
+    fun isVisible(activity: Activity): Boolean {
+        if (!showActivities) return false
+        if (activity.childIds.isEmpty()) return true
+        return activity.childIds.any { it !in hiddenChildIds }
+    }
+
+    val activitiesByDate: Map<LocalDate, List<Activity>> = days.associate { day ->
+        day.date to activitiesOn(day.date, allActivities).filter(::isVisible).sortedBy { it.startTime }
+    }
+    val datesWithActivities = activitiesByDate.filterValues { it.isNotEmpty() }.keys
+    val activitiesForSelectedDay = activitiesByDate[selectedDate] ?: emptyList()
+
+    val visibleParentAssignments: Map<LocalDate, Parent> = if (showParentAssignments) {
+        assignments.mapNotNull { (date, slot) -> parentsBySlot[slot]?.let { date to it } }.toMap()
+    } else {
+        emptyMap()
+    }
 
     Scaffold(
         modifier = modifier,
@@ -81,13 +127,11 @@ fun CalendarScreen(eventRepository: EventRepository, modifier: Modifier = Modifi
                     IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
                     }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    }
                 }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { dialogState = EventDialogState.Adding }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add event")
-            }
         }
     ) { innerPadding ->
         Column(
@@ -96,45 +140,81 @@ fun CalendarScreen(eventRepository: EventRepository, modifier: Modifier = Modifi
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
+            ParentAssignmentPanel(
+                isAssigning = isAssigningParent,
+                onStartAssigning = { isAssigningParent = true },
+                onStopAssigning = { isAssigningParent = false },
+                parents = parents,
+                selectedSlot = assigningSlot,
+                onSelectSlot = { assigningSlot = it },
+                modifier = Modifier.padding(12.dp)
+            )
+            CalendarFilters(
+                showParentAssignments = showParentAssignments,
+                onToggleParentAssignments = { showParentAssignments = !showParentAssignments },
+                showActivities = showActivities,
+                onToggleActivities = { showActivities = !showActivities },
+                children = children,
+                hiddenChildIds = hiddenChildIds,
+                onToggleChild = { childId ->
+                    hiddenChildIds = if (childId in hiddenChildIds) {
+                        hiddenChildIds - childId
+                    } else {
+                        hiddenChildIds + childId
+                    }
+                },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
             MonthGrid(
                 days = days,
                 firstDayOfWeek = firstDayOfWeek,
                 selectedDate = selectedDate,
-                datesWithEvents = datesWithEvents,
-                onDayClick = { selectedDate = it }
+                datesWithActivities = datesWithActivities,
+                parentAssignments = visibleParentAssignments,
+                onDayClick = { date ->
+                    selectedDate = date
+                    if (isAssigningParent) {
+                        parentAssignmentRepository.assign(date, assigningSlot)
+                    }
+                },
+                modifier = Modifier.padding(horizontal = 12.dp)
             )
-            HorizontalDivider()
-            DayEventsSection(
+            DaySummarySection(
                 date = selectedDate,
-                events = eventsForSelectedDay,
-                onEventClick = { dialogState = EventDialogState.Editing(it) }
+                parent = visibleParentAssignments[selectedDate],
+                activities = activitiesForSelectedDay,
+                children = children,
+                onActivityClick = { dialogState = ActivityDialogState.Editing(it) },
+                onAddActivityClick = { dialogState = ActivityDialogState.Adding }
             )
         }
     }
 
     when (val state = dialogState) {
-        is EventDialogState.Adding -> {
-            EventDialog(
+        is ActivityDialogState.Adding -> {
+            ActivityDialog(
                 date = selectedDate,
-                initialEvent = null,
+                initialActivity = null,
+                children = children,
                 onDismiss = { dialogState = null },
-                onSave = { event ->
-                    eventRepository.addEvent(event)
+                onSave = { activity ->
+                    activityRepository.addActivity(activity)
                     dialogState = null
                 }
             )
         }
-        is EventDialogState.Editing -> {
-            EventDialog(
-                date = state.event.date,
-                initialEvent = state.event,
+        is ActivityDialogState.Editing -> {
+            ActivityDialog(
+                date = state.activity.date,
+                initialActivity = state.activity,
+                children = children,
                 onDismiss = { dialogState = null },
-                onSave = { event ->
-                    eventRepository.updateEvent(event)
+                onSave = { activity ->
+                    activityRepository.updateActivity(activity)
                     dialogState = null
                 },
                 onDelete = {
-                    eventRepository.deleteEvent(state.event.id)
+                    activityRepository.deleteActivity(state.activity.id)
                     dialogState = null
                 }
             )

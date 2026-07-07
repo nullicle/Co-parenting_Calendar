@@ -6,8 +6,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.co_parenting_calendar.core.designsystem.theme.Coparenting_CalendarTheme
-import com.example.co_parenting_calendar.feature.calendar.data.EventRepository
+import com.example.co_parenting_calendar.feature.activity.data.ActivityRepository
 import com.example.co_parenting_calendar.feature.calendar.ui.CalendarScreen
+import com.example.co_parenting_calendar.feature.children.data.ChildRepository
+import com.example.co_parenting_calendar.feature.parent.data.ParentAssignmentRepository
+import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
 import org.junit.Rule
 import org.junit.Test
 import java.time.YearMonth
@@ -27,11 +30,20 @@ class ExampleInstrumentedTest {
     @Test
     fun calendarScreen_showsCurrentMonthAndNavigatesToNextMonth() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val repository = EventRepository(context)
+        val activityRepository = ActivityRepository(context)
+        val childRepository = ChildRepository(context)
+        val parentRepository = ParentRepository(context)
+        val parentAssignmentRepository = ParentAssignmentRepository(context)
 
         composeTestRule.setContent {
             Coparenting_CalendarTheme {
-                CalendarScreen(eventRepository = repository)
+                CalendarScreen(
+                    activityRepository = activityRepository,
+                    childRepository = childRepository,
+                    parentRepository = parentRepository,
+                    parentAssignmentRepository = parentAssignmentRepository,
+                    onOpenSettings = {}
+                )
             }
         }
 
