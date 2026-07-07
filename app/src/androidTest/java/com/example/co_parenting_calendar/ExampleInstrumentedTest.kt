@@ -4,7 +4,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
 import com.example.co_parenting_calendar.core.designsystem.theme.Coparenting_CalendarTheme
+import com.example.co_parenting_calendar.feature.calendar.data.EventRepository
 import com.example.co_parenting_calendar.feature.calendar.ui.CalendarScreen
 import org.junit.Rule
 import org.junit.Test
@@ -24,9 +26,12 @@ class ExampleInstrumentedTest {
 
     @Test
     fun calendarScreen_showsCurrentMonthAndNavigatesToNextMonth() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val repository = EventRepository(context)
+
         composeTestRule.setContent {
             Coparenting_CalendarTheme {
-                CalendarScreen()
+                CalendarScreen(eventRepository = repository)
             }
         }
 
