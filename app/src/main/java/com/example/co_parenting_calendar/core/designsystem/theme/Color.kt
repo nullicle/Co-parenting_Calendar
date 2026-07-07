@@ -1,4 +1,4 @@
-package com.example.co_parenting_calendar.ui.theme
+package com.example.co_parenting_calendar.core.designsystem.theme
 
 import androidx.compose.ui.graphics.Color
 
