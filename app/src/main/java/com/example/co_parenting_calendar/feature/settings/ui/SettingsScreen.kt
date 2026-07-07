@@ -38,6 +38,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.co_parenting_calendar.core.designsystem.ColorDotLabel
 import com.example.co_parenting_calendar.core.designsystem.SettingsSection
+import com.example.co_parenting_calendar.core.firebase.FirebaseConnectionTester
+import com.example.co_parenting_calendar.core.firebase.FirestoreTestResult
+import com.example.co_parenting_calendar.core.firebase.isFirebaseAppInitialized
 import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
 import com.example.co_parenting_calendar.feature.parent.domain.Parent
 import com.example.co_parenting_calendar.feature.parent.ui.ParentDialog
@@ -81,6 +84,10 @@ fun SettingsScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "unknown"
     }
+
+    val firebaseConnectionTester = remember { FirebaseConnectionTester() }
+    val isFirebaseConnected = remember { isFirebaseAppInitialized() }
+    var firestoreTestResult by remember { mutableStateOf(FirestoreTestResult.NOT_RUN) }
 
     Scaffold(
         modifier = modifier,
@@ -184,6 +191,40 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            SettingsSection(title = "Firebase Status") {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FirebaseStatusRow(
+                        label = "Firebase Connected",
+                        value = if (isFirebaseConnected) "✅" else "❌"
+                    )
+                    FirebaseStatusRow(label = "Signed In", value = "Not yet implemented")
+                    FirebaseStatusRow(
+                        label = "Firestore Test",
+                        value = when (firestoreTestResult) {
+                            FirestoreTestResult.NOT_RUN -> "Not run"
+                            FirestoreTestResult.RUNNING -> "Testing…"
+                            FirestoreTestResult.PASS -> "Pass"
+                            FirestoreTestResult.FAIL -> "Fail"
+                        }
+                    )
+                    Button(
+                        onClick = {
+                            firestoreTestResult = FirestoreTestResult.RUNNING
+                            firebaseConnectionTester.testConnection { result -> firestoreTestResult = result }
+                        },
+                        enabled = firestoreTestResult != FirestoreTestResult.RUNNING,
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) { Text("Test Firebase Connection") }
+                    Text(
+                        text = "Development only - writes and reads back a test document. " +
+                            "Remove this section once real syncing is implemented.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
         }
     }
 
@@ -196,6 +237,17 @@ fun SettingsScreen(
                 editingParent = null
             }
         )
+    }
+}
+
+@Composable
+private fun FirebaseStatusRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

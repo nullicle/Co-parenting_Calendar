@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "351133157091",
+    "project_id": "co-parenting-calendar-9ff5a",
+    "storage_bucket": "co-parenting-calendar-9ff5a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:351133157091:android:824cd7bd245bd9a27867d6",
+        "android_client_info": {
+          "package_name": "com.example.co_parenting_calendar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYP-BWcYEhZBi7uSnhysbMOEGl5L4XxQ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
