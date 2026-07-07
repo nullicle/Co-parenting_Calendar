@@ -14,9 +14,14 @@ import java.time.LocalDate
  */
 class ParentAssignmentRepository(context: Context) {
 
-    private val file = File(context.filesDir, "parent_assignments.json")
+    val file = File(context.filesDir, "parent_assignments.json")
 
     val assignments = mutableStateMapOf<LocalDate, ParentSlot>().apply { putAll(readFromDisk()) }
+
+    fun reload() {
+        assignments.clear()
+        assignments.putAll(readFromDisk())
+    }
 
     fun assign(date: LocalDate, slot: ParentSlot) {
         assignments[date] = slot

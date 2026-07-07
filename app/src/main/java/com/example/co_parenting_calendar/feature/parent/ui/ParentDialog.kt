@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -48,7 +49,7 @@ fun ParentDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 enabled = name.isNotBlank(),
                 onClick = { onSave(parent.copy(name = name.trim(), colorArgb = selectedColor)) }
             ) { Text("Save") }

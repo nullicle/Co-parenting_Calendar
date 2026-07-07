@@ -12,9 +12,14 @@ import java.io.File
  */
 class ChildRepository(context: Context) {
 
-    private val file = File(context.filesDir, "children.json")
+    val file = File(context.filesDir, "children.json")
 
     val children = mutableStateListOf<Child>().apply { addAll(readFromDisk()) }
+
+    fun reload() {
+        children.clear()
+        children.addAll(readFromDisk())
+    }
 
     fun addChild(child: Child) {
         children.add(child)

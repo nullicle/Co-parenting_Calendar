@@ -11,17 +11,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.co_parenting_calendar.feature.activity.domain.Activity
+import com.example.co_parenting_calendar.feature.activity.ui.imageVector
 import com.example.co_parenting_calendar.feature.children.domain.Child
 import com.example.co_parenting_calendar.feature.parent.domain.Parent
 import java.time.LocalDate
@@ -43,30 +46,39 @@ fun DaySummarySection(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(12.dp)
+            .padding(horizontal = 12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Text(
                 text = date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.getDefault())),
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleLarge
             )
 
             Row(
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Parent: ", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Parent",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 if (parent != null) {
                     Box(
                         modifier = Modifier
+                            .padding(start = 10.dp)
                             .size(12.dp)
                             .background(Color(parent.colorArgb), CircleShape)
                     )
-                    Text(text = " ${parent.name}", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = " ${parent.name}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                 } else {
                     Text(
-                        text = "Not set",
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = " Not set",
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -74,18 +86,20 @@ fun DaySummarySection(
 
             Text(
                 text = "Activities",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 20.dp, bottom = 4.dp)
             )
             val sortedActivities = activities.sortedBy { it.startTime }
             if (sortedActivities.isEmpty()) {
                 Text(
                     text = "No activities",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp)
                 )
             } else {
-                sortedActivities.forEach { activity ->
+                sortedActivities.forEachIndexed { index, activity ->
                     val timeLabel = if (activity.endTime != null) {
                         "${activity.startTime.format(TIME_FORMATTER)}–${activity.endTime.format(TIME_FORMATTER)}"
                     } else {
@@ -97,41 +111,54 @@ fun DaySummarySection(
                         childNames.size == 1 -> "Child: ${childNames.first()}"
                         else -> "Children: ${childNames.joinToString(", ")}"
                     }
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onActivityClick(activity) }
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Row {
-                            Text(
-                                text = timeLabel,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
-                            Text(activity.title, style = MaterialTheme.typography.bodyLarge)
-                        }
-                        if (childrenLabel != null) {
-                            Text(
-                                text = childrenLabel,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = activity.icon.imageVector(),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        if (activity.location.isNotBlank()) {
+                        Column(modifier = Modifier.padding(start = 12.dp)) {
                             Text(
-                                text = activity.location,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "$timeLabel  ${activity.title}",
+                                style = MaterialTheme.typography.bodyLarge
                             )
+                            if (childrenLabel != null) {
+                                Text(
+                                    text = childrenLabel,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (activity.location.isNotBlank()) {
+                                Text(
+                                    text = activity.location,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
+                    if (index != sortedActivities.lastIndex) HorizontalDivider()
                 }
             }
 
-            TextButton(
+            Button(
                 onClick = onAddActivityClick,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 16.dp)
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text(" Add Activity")

@@ -3,6 +3,7 @@ package com.example.co_parenting_calendar.feature.activity.data
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import com.example.co_parenting_calendar.feature.activity.domain.Activity
+import com.example.co_parenting_calendar.feature.activity.domain.ActivityIconType
 import com.example.co_parenting_calendar.feature.activity.domain.RepeatRule
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,13 +13,20 @@ import java.time.LocalTime
 
 /**
  * Stores activities as a small JSON file in app-private storage. No database, no DI framework -
- * just one class the UI reads from and writes through directly.
+ * just one class the UI reads from and writes through directly. [file] is exposed (read-only)
+ * and [reload] is public so the Settings export/import feature can move raw JSON in and out
+ * without this class needing to know anything about Storage Access Framework.
  */
 class ActivityRepository(context: Context) {
 
-    private val file = File(context.filesDir, "activities.json")
+    val file = File(context.filesDir, "activities.json")
 
     val activities = mutableStateListOf<Activity>().apply { addAll(readFromDisk()) }
+
+    fun reload() {
+        activities.clear()
+        activities.addAll(readFromDisk())
+    }
 
     fun addActivity(activity: Activity) {
         activities.add(activity)
@@ -63,7 +71,9 @@ class ActivityRepository(context: Context) {
             notes = obj.optString("notes", ""),
             childIds = childIds,
             repeat = runCatching { RepeatRule.valueOf(obj.optString("repeat", "NEVER")) }
-                .getOrDefault(RepeatRule.NEVER)
+                .getOrDefault(RepeatRule.NEVER),
+            icon = runCatching { ActivityIconType.valueOf(obj.optString("icon", "OTHER")) }
+                .getOrDefault(ActivityIconType.OTHER)
         )
     }
 
@@ -82,6 +92,7 @@ class ActivityRepository(context: Context) {
                     put("notes", activity.notes)
                     put("childIds", JSONArray(activity.childIds))
                     put("repeat", activity.repeat.name)
+                    put("icon", activity.icon.name)
                 }
             )
         }

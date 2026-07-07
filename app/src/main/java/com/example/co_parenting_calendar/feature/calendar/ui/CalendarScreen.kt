@@ -1,6 +1,14 @@
 package com.example.co_parenting_calendar.feature.calendar.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -8,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -22,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.co_parenting_calendar.core.util.enumSaver
@@ -77,6 +87,7 @@ fun CalendarScreen(
     var isAssigningParent by rememberSaveable { mutableStateOf(false) }
     var assigningSlot by rememberSaveable(stateSaver = enumSaver()) { mutableStateOf(ParentSlot.ONE) }
     var dialogState by remember { mutableStateOf<ActivityDialogState?>(null) }
+    var showMonthYearPicker by remember { mutableStateOf(false) }
 
     var showParentAssignments by rememberSaveable { mutableStateOf(true) }
     var showActivities by rememberSaveable { mutableStateOf(true) }
@@ -84,7 +95,6 @@ fun CalendarScreen(
 
     val firstDayOfWeek = remember { WeekFields.of(Locale.getDefault()).firstDayOfWeek }
     val today = remember { LocalDate.now() }
-    val days = remember(currentMonth) { generateMonthGrid(currentMonth, today, firstDayOfWeek) }
     val monthTitle = remember(currentMonth) {
         currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
     }
@@ -101,11 +111,9 @@ fun CalendarScreen(
         return activity.childIds.any { it !in hiddenChildIds }
     }
 
-    val activitiesByDate: Map<LocalDate, List<Activity>> = days.associate { day ->
-        day.date to activitiesOn(day.date, allActivities).filter(::isVisible).sortedBy { it.startTime }
-    }
-    val datesWithActivities = activitiesByDate.filterValues { it.isNotEmpty() }.keys
-    val activitiesForSelectedDay = activitiesByDate[selectedDate] ?: emptyList()
+    val activitiesForSelectedDay = activitiesOn(selectedDate, allActivities)
+        .filter(::isVisible)
+        .sortedBy { it.startTime }
 
     val visibleParentAssignments: Map<LocalDate, Parent> = if (showParentAssignments) {
         assignments.mapNotNull { (date, slot) -> parentsBySlot[slot]?.let { date to it } }.toMap()
@@ -117,7 +125,19 @@ fun CalendarScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text(monthTitle) },
+                title = {
+                    Row(
+                        modifier = Modifier.clickable { showMonthYearPicker = true },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(monthTitle)
+                        Icon(
+                            Icons.Filled.ArrowDropDown,
+                            contentDescription = "Choose month and year",
+                            modifier = Modifier.padding(start = 2.dp)
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month")
@@ -165,20 +185,40 @@ fun CalendarScreen(
                 },
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            MonthGrid(
-                days = days,
-                firstDayOfWeek = firstDayOfWeek,
-                selectedDate = selectedDate,
-                datesWithActivities = datesWithActivities,
-                parentAssignments = visibleParentAssignments,
-                onDayClick = { date ->
-                    selectedDate = date
-                    if (isAssigningParent) {
-                        parentAssignmentRepository.assign(date, assigningSlot)
+            AnimatedContent(
+                targetState = currentMonth,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInHorizontally { width -> width } + fadeIn())
+                            .togetherWith(slideOutHorizontally { width -> -width } + fadeOut())
+                    } else {
+                        (slideInHorizontally { width -> -width } + fadeIn())
+                            .togetherWith(slideOutHorizontally { width -> width } + fadeOut())
                     }
                 },
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
+                label = "month"
+            ) { month ->
+                val monthDays = remember(month, today, firstDayOfWeek) {
+                    generateMonthGrid(month, today, firstDayOfWeek)
+                }
+                val monthActivitiesByDate = monthDays.associate { day ->
+                    day.date to activitiesOn(day.date, allActivities).filter(::isVisible)
+                }
+                MonthGrid(
+                    days = monthDays,
+                    firstDayOfWeek = firstDayOfWeek,
+                    selectedDate = selectedDate,
+                    activitiesByDate = monthActivitiesByDate,
+                    parentAssignments = visibleParentAssignments,
+                    onDayClick = { date ->
+                        selectedDate = date
+                        if (isAssigningParent) {
+                            parentAssignmentRepository.assign(date, assigningSlot)
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
             DaySummarySection(
                 date = selectedDate,
                 parent = visibleParentAssignments[selectedDate],
@@ -188,6 +228,17 @@ fun CalendarScreen(
                 onAddActivityClick = { dialogState = ActivityDialogState.Adding }
             )
         }
+    }
+
+    if (showMonthYearPicker) {
+        MonthYearPickerDialog(
+            initialMonth = currentMonth,
+            onDismiss = { showMonthYearPicker = false },
+            onMonthSelected = { newMonth ->
+                currentMonth = newMonth
+                showMonthYearPicker = false
+            }
+        )
     }
 
     when (val state = dialogState) {

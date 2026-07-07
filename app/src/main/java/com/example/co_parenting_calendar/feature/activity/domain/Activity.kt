@@ -16,5 +16,6 @@ data class Activity(
     val location: String = "",
     val notes: String = "",
     val childIds: List<String> = emptyList(),
-    val repeat: RepeatRule = RepeatRule.NEVER
+    val repeat: RepeatRule = RepeatRule.NEVER,
+    val icon: ActivityIconType = ActivityIconType.OTHER
 )

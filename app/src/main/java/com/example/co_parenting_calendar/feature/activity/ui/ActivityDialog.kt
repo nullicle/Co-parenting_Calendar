@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,7 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.co_parenting_calendar.core.designsystem.AppTimePickerDialog
+import com.example.co_parenting_calendar.core.designsystem.CheckableFilterChip
 import com.example.co_parenting_calendar.feature.activity.domain.Activity
+import com.example.co_parenting_calendar.feature.activity.domain.ActivityIconType
 import com.example.co_parenting_calendar.feature.activity.domain.RepeatRule
 import com.example.co_parenting_calendar.feature.children.domain.Child
 import java.time.LocalDate
@@ -40,7 +42,6 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityDialog(
     date: LocalDate,
@@ -55,6 +56,7 @@ fun ActivityDialog(
     var notes by remember { mutableStateOf(initialActivity?.notes ?: "") }
     var startTime by remember { mutableStateOf(initialActivity?.startTime ?: LocalTime.of(9, 0)) }
     var endTime by remember { mutableStateOf(initialActivity?.endTime) }
+    var icon by remember { mutableStateOf(initialActivity?.icon ?: ActivityIconType.OTHER) }
     var spanDays by remember {
         mutableStateOf(
             initialActivity?.let { ChronoUnit.DAYS.between(it.date, it.endDate).toInt() + 1 } ?: 1
@@ -74,8 +76,12 @@ fun ActivityDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialActivity == null) "Add activity" else "Edit activity") },
         text = {
-            Column {
-                Text(date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.getDefault())))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.getDefault())),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -83,7 +89,13 @@ fun ActivityDialog(
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp)
+                        .padding(top = 4.dp)
+                )
+
+                ActivityIconPicker(
+                    selectedIcon = icon,
+                    onIconSelected = { icon = it },
+                    modifier = Modifier.padding(top = 8.dp)
                 )
 
                 Row(
@@ -170,7 +182,7 @@ fun ActivityDialog(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RepeatRule.entries.forEach { option ->
-                        FilterChip(
+                        CheckableFilterChip(
                             selected = repeat == option,
                             onClick = { repeat = option },
                             label = { Text(option.displayName()) }
@@ -198,7 +210,7 @@ fun ActivityDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 enabled = title.isNotBlank(),
                 onClick = {
                     onSave(
@@ -212,7 +224,8 @@ fun ActivityDialog(
                             location = location.trim(),
                             notes = notes.trim(),
                             childIds = selectedChildIds.toList(),
-                            repeat = repeat
+                            repeat = repeat,
+                            icon = icon
                         )
                     )
                 }
@@ -221,7 +234,10 @@ fun ActivityDialog(
         dismissButton = {
             Row {
                 if (onDelete != null) {
-                    TextButton(onClick = onDelete) { Text("Delete") }
+                    TextButton(
+                        onClick = onDelete,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("Delete") }
                 }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }

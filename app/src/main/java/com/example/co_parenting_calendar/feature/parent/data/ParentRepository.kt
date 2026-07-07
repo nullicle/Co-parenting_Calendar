@@ -14,17 +14,24 @@ import java.io.File
  */
 class ParentRepository(context: Context) {
 
-    private val file = File(context.filesDir, "parents.json")
+    val file = File(context.filesDir, "parents.json")
 
-    val parents = mutableStateListOf<Parent>().apply {
-        val stored = readFromDisk()
-        addAll(defaultParents().map { default -> stored.find { it.slot == default.slot } ?: default })
+    val parents = mutableStateListOf<Parent>().apply { addAll(loadParents()) }
+
+    fun reload() {
+        parents.clear()
+        parents.addAll(loadParents())
     }
 
     fun updateParent(parent: Parent) {
         val index = parents.indexOfFirst { it.slot == parent.slot }
         if (index != -1) parents[index] = parent
         writeToDisk()
+    }
+
+    private fun loadParents(): List<Parent> {
+        val stored = readFromDisk()
+        return defaultParents().map { default -> stored.find { it.slot == default.slot } ?: default }
     }
 
     private fun defaultParents(): List<Parent> = listOf(
