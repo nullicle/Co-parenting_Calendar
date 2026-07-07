@@ -12,7 +12,20 @@
           "package_name": "com.example.co_parenting_calendar"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "351133157091-674cdfls77oaq8qlui5piracl6efqnl5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.co_parenting_calendar",
+            "certificate_hash": "eff4ba6d43bd031a134ce2085eae62febc1642c2"
+          }
+        },
+        {
+          "client_id": "351133157091-lp6b59rncgmnbtcp14neq6vdht3tcigc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDYP-BWcYEhZBi7uSnhysbMOEGl5L4XxQ4"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "351133157091-lp6b59rncgmnbtcp14neq6vdht3tcigc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.example.co_parenting_calendar.core.util.enumSaver
 import com.example.co_parenting_calendar.feature.activity.data.ActivityRepository
+import com.example.co_parenting_calendar.feature.auth.data.AuthRepository
+import com.example.co_parenting_calendar.feature.auth.ui.SignInScreen
 import com.example.co_parenting_calendar.feature.calendar.ui.CalendarScreen
 import com.example.co_parenting_calendar.feature.children.data.ChildRepository
 import com.example.co_parenting_calendar.feature.children.ui.ChildrenScreen
@@ -21,8 +23,9 @@ import com.example.co_parenting_calendar.feature.settings.ui.SettingsScreen
 private enum class AppScreen { CALENDAR, SETTINGS, CHILDREN }
 
 /**
- * Only three screens, each reachable from at most one other, so this is a hand-rolled
- * "back stack of depth 2" instead of pulling in Navigation Compose.
+ * Gated on sign-in first: no signed-in Firebase user means SignInScreen, full stop. Once
+ * authRepository.currentUser flips to non-null (its AuthStateListener fires), this recomposes
+ * straight into the normal three-screen app - no navigation call needed for that transition.
  */
 @Composable
 fun CoParentingCalendarApp(
@@ -31,8 +34,14 @@ fun CoParentingCalendarApp(
     parentRepository: ParentRepository,
     parentAssignmentRepository: ParentAssignmentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
-    dataBackupManager: DataBackupManager
+    dataBackupManager: DataBackupManager,
+    authRepository: AuthRepository
 ) {
+    if (authRepository.currentUser == null) {
+        SignInScreen(authRepository = authRepository, modifier = Modifier.fillMaxSize())
+        return
+    }
+
     var screen by rememberSaveable(stateSaver = enumSaver()) { mutableStateOf(AppScreen.CALENDAR) }
 
     when (screen) {
@@ -48,6 +57,7 @@ fun CoParentingCalendarApp(
             parentRepository = parentRepository,
             themePreferenceRepository = themePreferenceRepository,
             dataBackupManager = dataBackupManager,
+            authRepository = authRepository,
             onBack = { screen = AppScreen.CALENDAR },
             onOpenChildren = { screen = AppScreen.CHILDREN },
             modifier = Modifier.fillMaxSize()

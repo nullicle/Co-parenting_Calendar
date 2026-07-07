@@ -3,18 +3,23 @@ package com.example.co_parenting_calendar.feature.settings.ui
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -34,13 +39,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.co_parenting_calendar.core.designsystem.ColorDotLabel
 import com.example.co_parenting_calendar.core.designsystem.SettingsSection
 import com.example.co_parenting_calendar.core.firebase.FirebaseConnectionTester
 import com.example.co_parenting_calendar.core.firebase.FirestoreTestResult
 import com.example.co_parenting_calendar.core.firebase.isFirebaseAppInitialized
+import com.example.co_parenting_calendar.feature.auth.data.AuthRepository
+import com.example.co_parenting_calendar.feature.auth.ui.GoogleSignInButton
 import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
 import com.example.co_parenting_calendar.feature.parent.domain.Parent
 import com.example.co_parenting_calendar.feature.parent.ui.ParentDialog
@@ -54,6 +64,7 @@ fun SettingsScreen(
     parentRepository: ParentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
     dataBackupManager: DataBackupManager,
+    authRepository: AuthRepository,
     onBack: () -> Unit,
     onOpenChildren: () -> Unit,
     modifier: Modifier = Modifier
@@ -110,6 +121,60 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            SettingsSection(title = "Account") {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    val user = authRepository.currentUser
+                    if (user != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (user.photoUrl != null) {
+                                AsyncImage(
+                                    model = user.photoUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Filled.Person, contentDescription = null)
+                                }
+                            }
+                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                Text(
+                                    text = user.displayName ?: "Signed in",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = user.email ?: "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { authRepository.signOut() },
+                            modifier = Modifier.padding(top = 12.dp)
+                        ) { Text("Sign Out") }
+                    } else {
+                        Text(
+                            text = "Not signed in",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        GoogleSignInButton(
+                            authRepository = authRepository,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                    }
+                }
+            }
+
             SettingsSection(title = "Family") {
                 ListItem(
                     headlineContent = { Text("Children") },
@@ -198,7 +263,10 @@ fun SettingsScreen(
                         label = "Firebase Connected",
                         value = if (isFirebaseConnected) "✅" else "❌"
                     )
-                    FirebaseStatusRow(label = "Signed In", value = "Not yet implemented")
+                    FirebaseStatusRow(
+                        label = "Signed In",
+                        value = if (authRepository.currentUser != null) "✅" else "❌"
+                    )
                     FirebaseStatusRow(
                         label = "Firestore Test",
                         value = when (firestoreTestResult) {

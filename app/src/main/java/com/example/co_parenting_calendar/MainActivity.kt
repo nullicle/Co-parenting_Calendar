@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.co_parenting_calendar.core.designsystem.theme.Coparenting_CalendarTheme
 import com.example.co_parenting_calendar.feature.activity.data.ActivityRepository
+import com.example.co_parenting_calendar.feature.auth.data.AuthRepository
 import com.example.co_parenting_calendar.feature.children.data.ChildRepository
 import com.example.co_parenting_calendar.feature.parent.data.ParentAssignmentRepository
 import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
@@ -21,6 +22,7 @@ class MainActivity : ComponentActivity() {
     private val parentRepository by lazy { ParentRepository(applicationContext) }
     private val parentAssignmentRepository by lazy { ParentAssignmentRepository(applicationContext) }
     private val themePreferenceRepository by lazy { ThemePreferenceRepository(applicationContext) }
+    private val authRepository by lazy { AuthRepository() }
     private val dataBackupManager by lazy {
         DataBackupManager(
             context = applicationContext,
@@ -47,7 +49,8 @@ class MainActivity : ComponentActivity() {
                     parentRepository = parentRepository,
                     parentAssignmentRepository = parentAssignmentRepository,
                     themePreferenceRepository = themePreferenceRepository,
-                    dataBackupManager = dataBackupManager
+                    dataBackupManager = dataBackupManager,
+                    authRepository = authRepository
                 )
             }
         }
