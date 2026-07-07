@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ fun DaySummarySection(
     activities: List<Activity>,
     children: List<Child>,
     onActivityClick: (Activity) -> Unit,
+    onDeleteActivity: (Activity) -> Unit,
     onAddActivityClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -131,7 +134,11 @@ fun DaySummarySection(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                        Column(modifier = Modifier.padding(start = 12.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 12.dp)
+                                .weight(1f)
+                        ) {
                             Text(
                                 text = "$timeLabel  ${activity.title}",
                                 style = MaterialTheme.typography.bodyLarge
@@ -150,6 +157,13 @@ fun DaySummarySection(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                        IconButton(onClick = { onDeleteActivity(activity) }) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Delete activity",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                     if (index != sortedActivities.lastIndex) HorizontalDivider()

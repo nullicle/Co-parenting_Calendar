@@ -209,6 +209,7 @@ fun CalendarScreen(
                     firstDayOfWeek = firstDayOfWeek,
                     selectedDate = selectedDate,
                     activitiesByDate = monthActivitiesByDate,
+                    children = children,
                     parentAssignments = visibleParentAssignments,
                     onDayClick = { date ->
                         selectedDate = date
@@ -225,6 +226,7 @@ fun CalendarScreen(
                 activities = activitiesForSelectedDay,
                 children = children,
                 onActivityClick = { dialogState = ActivityDialogState.Editing(it) },
+                onDeleteActivity = { activityRepository.deleteActivity(it.id) },
                 onAddActivityClick = { dialogState = ActivityDialogState.Adding }
             )
         }
