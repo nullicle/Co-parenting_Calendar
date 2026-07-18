@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.co_parenting_calendar"
+    namespace = "nz.co.chrisstevens.coparenting"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -13,7 +13,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.co_parenting_calendar"
+        applicationId = "nz.co.chrisstevens.coparenting"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

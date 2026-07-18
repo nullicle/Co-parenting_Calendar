@@ -11,8 +11,8 @@ feature code yet. When implementing features, you are establishing the architect
 following an existing one — check with the user on structural decisions (navigation library,
 DI, persistence, package layout) rather than assuming a convention.
 
-- Package: `com.example.co_parenting_calendar`
-- Application ID / namespace: `com.example.co_parenting_calendar`
+- Package: `nz.co.chrisstevens.coparenting`
+- Application ID / namespace: `nz.co.chrisstevens.coparenting`
 - Module layout: single `:app` module (`settings.gradle.kts`)
 
 ## Commands
@@ -27,7 +27,7 @@ Build and test from the project root using the Gradle wrapper.
 ./gradlew testDebugUnitTest
 
 # Run a single unit test class
-./gradlew testDebugUnitTest --tests "com.example.co_parenting_calendar.ExampleUnitTest"
+./gradlew testDebugUnitTest --tests "nz.co.chrisstevens.coparenting.ExampleUnitTest"
 
 # Run instrumented tests (app/src/androidTest) — requires a connected device/emulator
 ./gradlew connectedDebugAndroidTest
@@ -50,6 +50,6 @@ There is no Espresso/Compose UI test harness wired up beyond the default templat
 - UI is built with Jetpack Compose (Material 3) via the Compose BOM
   (`androidx.compose:compose-bom:2026.02.01`); `buildFeatures.compose = true` is set in
   `app/build.gradle.kts`.
-- Compose theme scaffolding lives in `app/src/main/java/com/example/co_parenting_calendar/ui/theme/`
+- Compose theme scaffolding lives in `app/src/main/java/nz/co/chrisstevens/coparenting/core/designsystem/theme/`
   (`Color.kt`, `Theme.kt`, `Type.kt`) — extend these rather than hardcoding colors/typography in
   composables.
