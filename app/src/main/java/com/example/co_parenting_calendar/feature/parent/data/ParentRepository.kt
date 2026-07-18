@@ -23,6 +23,17 @@ class ParentRepository(context: Context) {
         parents.addAll(loadParents())
     }
 
+    /**
+     * Resets both parents back to their defaults, local only - used by the developer "reset
+     * local data" tools. Never removes down to zero parents; the rest of the app assumes
+     * exactly two always exist.
+     */
+    fun resetToDefaults() {
+        parents.clear()
+        parents.addAll(defaultParents())
+        file.delete()
+    }
+
     fun updateParent(parent: Parent) {
         val index = parents.indexOfFirst { it.slot == parent.slot }
         if (index != -1) parents[index] = parent

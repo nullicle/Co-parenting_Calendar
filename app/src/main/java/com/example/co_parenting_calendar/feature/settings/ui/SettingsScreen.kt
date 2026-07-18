@@ -19,8 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -30,18 +33,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.co_parenting_calendar.core.designsystem.ColorDotLabel
@@ -49,28 +57,49 @@ import com.example.co_parenting_calendar.core.designsystem.SettingsSection
 import com.example.co_parenting_calendar.core.firebase.FirebaseConnectionTester
 import com.example.co_parenting_calendar.core.firebase.FirestoreTestResult
 import com.example.co_parenting_calendar.core.firebase.isFirebaseAppInitialized
+import com.example.co_parenting_calendar.feature.activity.data.ActivityRepository
 import com.example.co_parenting_calendar.feature.auth.data.AuthRepository
 import com.example.co_parenting_calendar.feature.auth.ui.GoogleSignInButton
+import com.example.co_parenting_calendar.feature.children.data.ChildRepository
+import com.example.co_parenting_calendar.feature.family.data.FamilyRepository
+import com.example.co_parenting_calendar.feature.family.data.toFamilyErrorMessage
+import com.example.co_parenting_calendar.feature.family.domain.Family
+import com.example.co_parenting_calendar.feature.family.ui.familyMemberLabels
+import com.example.co_parenting_calendar.feature.parent.data.ParentAssignmentRepository
 import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
 import com.example.co_parenting_calendar.feature.parent.domain.Parent
 import com.example.co_parenting_calendar.feature.parent.ui.ParentDialog
 import com.example.co_parenting_calendar.feature.settings.data.DataBackupManager
 import com.example.co_parenting_calendar.feature.settings.data.ThemePreference
 import com.example.co_parenting_calendar.feature.settings.data.ThemePreferenceRepository
+import com.example.co_parenting_calendar.feature.settings.data.clearAllLocalData
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    activityRepository: ActivityRepository,
+    childRepository: ChildRepository,
     parentRepository: ParentRepository,
+    parentAssignmentRepository: ParentAssignmentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
     dataBackupManager: DataBackupManager,
     authRepository: AuthRepository,
+    familyRepository: FamilyRepository,
+    family: Family,
     onBack: () -> Unit,
     onOpenChildren: () -> Unit,
+    onFamilyDeleted: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var editingParent by remember { mutableStateOf<Parent?>(null) }
+    var isLeavingFamily by remember { mutableStateOf(false) }
+    var isResettingEverything by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -111,7 +140,8 @@ fun SettingsScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -175,7 +205,7 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection(title = "Family") {
+            SettingsSection(title = "Children & Parents") {
                 ListItem(
                     headlineContent = { Text("Children") },
                     trailingContent = {
@@ -193,6 +223,76 @@ fun SettingsScreen(
                         modifier = Modifier.clickable { editingParent = parent }
                     )
                     if (index != parentRepository.parents.lastIndex) HorizontalDivider()
+                }
+            }
+
+            SettingsSection(title = "Family") {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Shared Calendar", style = MaterialTheme.typography.titleMedium)
+
+                    Text(
+                        text = "Invite code",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                    Text(
+                        text = family.joinCode,
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(family.joinCode))
+                            scope.launch { snackbarHostState.showSnackbar("Invite code copied.") }
+                        },
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(" Copy Invite Code")
+                    }
+
+                    Text(
+                        text = "Members",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 20.dp)
+                    )
+                    val memberLabels = familyMemberLabels(family.memberUids, authRepository.currentUser)
+                    memberLabels.forEach { label ->
+                        ListItem(
+                            leadingContent = { Icon(Icons.Filled.Person, contentDescription = null) },
+                            headlineContent = { Text(label) }
+                        )
+                    }
+
+                    OutlinedButton(
+                        enabled = !isLeavingFamily,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.padding(top = 12.dp),
+                        onClick = {
+                            val uid = authRepository.currentUser?.uid ?: return@OutlinedButton
+                            isLeavingFamily = true
+                            scope.launch {
+                                val result = familyRepository.leaveFamily(uid)
+                                isLeavingFamily = false
+                                result.onSuccess { onFamilyDeleted() }
+                                    .onFailure {
+                                        snackbarHostState.showSnackbar(it.toFamilyErrorMessage())
+                                    }
+                            }
+                        }
+                    ) {
+                        if (isLeavingFamily) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            Text("Leave Family")
+                        }
+                    }
                 }
             }
 
@@ -291,6 +391,77 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+            }
+
+            SettingsSection(title = "Developer Tools") {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "This section is temporary and intended only during development.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = "Wipes every local activity, child, parent, and parent assignment. " +
+                            "You stay signed in and stay in the same family.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                    )
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        onClick = {
+                            clearAllLocalData(
+                                activityRepository = activityRepository,
+                                childRepository = childRepository,
+                                parentRepository = parentRepository,
+                                parentAssignmentRepository = parentAssignmentRepository
+                            )
+                            scope.launch { snackbarHostState.showSnackbar("Local data cleared.") }
+                        }
+                    ) { Text("Reset Local Data") }
+
+                    Text(
+                        text = "Leaves the current family and wipes all local data - as if the app " +
+                            "were freshly installed, while staying signed in.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp)
+                    )
+                    Button(
+                        enabled = !isResettingEverything,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        onClick = {
+                            val uid = authRepository.currentUser?.uid ?: return@Button
+                            isResettingEverything = true
+                            scope.launch {
+                                val result = familyRepository.leaveFamily(uid)
+                                isResettingEverything = false
+                                result.onSuccess {
+                                    clearAllLocalData(
+                                        activityRepository = activityRepository,
+                                        childRepository = childRepository,
+                                        parentRepository = parentRepository,
+                                        parentAssignmentRepository = parentAssignmentRepository
+                                    )
+                                    onFamilyDeleted()
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar(it.toFamilyErrorMessage())
+                                }
+                            }
+                        }
+                    ) {
+                        if (isResettingEverything) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onError
+                            )
+                        } else {
+                            Text("Leave Family and Reset Everything")
+                        }
+                    }
                 }
             }
         }

@@ -9,6 +9,7 @@ import com.example.co_parenting_calendar.core.designsystem.theme.Coparenting_Cal
 import com.example.co_parenting_calendar.feature.activity.data.ActivityRepository
 import com.example.co_parenting_calendar.feature.auth.data.AuthRepository
 import com.example.co_parenting_calendar.feature.children.data.ChildRepository
+import com.example.co_parenting_calendar.feature.family.data.FamilyRepository
 import com.example.co_parenting_calendar.feature.parent.data.ParentAssignmentRepository
 import com.example.co_parenting_calendar.feature.parent.data.ParentRepository
 import com.example.co_parenting_calendar.feature.settings.data.DataBackupManager
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
     private val parentAssignmentRepository by lazy { ParentAssignmentRepository(applicationContext) }
     private val themePreferenceRepository by lazy { ThemePreferenceRepository(applicationContext) }
     private val authRepository by lazy { AuthRepository() }
+    private val familyRepository by lazy { FamilyRepository() }
     private val dataBackupManager by lazy {
         DataBackupManager(
             context = applicationContext,
@@ -50,7 +52,8 @@ class MainActivity : ComponentActivity() {
                     parentAssignmentRepository = parentAssignmentRepository,
                     themePreferenceRepository = themePreferenceRepository,
                     dataBackupManager = dataBackupManager,
-                    authRepository = authRepository
+                    authRepository = authRepository,
+                    familyRepository = familyRepository
                 )
             }
         }

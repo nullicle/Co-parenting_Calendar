@@ -23,6 +23,12 @@ class ParentAssignmentRepository(context: Context) {
         assignments.putAll(readFromDisk())
     }
 
+    /** Wipes every assignment, local only - used by the developer "reset local data" tools. */
+    fun clear() {
+        assignments.clear()
+        file.delete()
+    }
+
     fun assign(date: LocalDate, slot: ParentSlot) {
         assignments[date] = slot
         writeToDisk()

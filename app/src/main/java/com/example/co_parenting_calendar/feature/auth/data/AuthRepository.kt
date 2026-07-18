@@ -10,16 +10,13 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import com.example.co_parenting_calendar.R
-import com.google.android.gms.tasks.Task
+import com.example.co_parenting_calendar.core.firebase.awaitResult
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.suspendCancellableCoroutine
 
 private const val TAG = "GoogleSignIn"
 
@@ -62,7 +59,7 @@ class AuthRepository {
             ) {
                 val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                 val firebaseCredential = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
-                auth.signInWithCredential(firebaseCredential).awaitCompletion()
+                auth.signInWithCredential(firebaseCredential).awaitResult()
                 Result.success(Unit)
             } else {
                 Result.failure(IllegalStateException("Unexpected credential type returned by Credential Manager"))
@@ -80,15 +77,5 @@ class AuthRepository {
 
     fun signOut() {
         auth.signOut()
-    }
-}
-
-private suspend fun <T> Task<T>.awaitCompletion(): T = suspendCancellableCoroutine { continuation ->
-    addOnCompleteListener { task ->
-        if (task.isSuccessful) {
-            continuation.resume(task.result)
-        } else {
-            continuation.resumeWithException(task.exception ?: IllegalStateException("Unknown Firebase error"))
-        }
     }
 }

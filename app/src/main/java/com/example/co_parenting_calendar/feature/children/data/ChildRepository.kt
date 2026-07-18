@@ -21,6 +21,12 @@ class ChildRepository(context: Context) {
         children.addAll(readFromDisk())
     }
 
+    /** Wipes every child, local only - used by the developer "reset local data" tools. */
+    fun clear() {
+        children.clear()
+        file.delete()
+    }
+
     fun addChild(child: Child) {
         children.add(child)
         writeToDisk()

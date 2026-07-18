@@ -28,6 +28,12 @@ class ActivityRepository(context: Context) {
         activities.addAll(readFromDisk())
     }
 
+    /** Wipes every activity, local only - used by the developer "reset local data" tools. */
+    fun clear() {
+        activities.clear()
+        file.delete()
+    }
+
     fun addActivity(activity: Activity) {
         activities.add(activity)
         writeToDisk()
