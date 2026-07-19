@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -100,6 +101,7 @@ fun SettingsScreen(
     var editingParent by remember { mutableStateOf<Parent?>(null) }
     var isLeavingFamily by remember { mutableStateOf(false) }
     var isResettingEverything by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -191,6 +193,14 @@ fun SettingsScreen(
                             onClick = { authRepository.signOut() },
                             modifier = Modifier.padding(top = 12.dp)
                         ) { Text("Sign Out") }
+                        OutlinedButton(
+                            onClick = { showDeleteAccountDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Icon(Icons.Filled.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(" Delete Account")
+                        }
                     } else {
                         Text(
                             text = "Not signed in",
@@ -476,6 +486,22 @@ fun SettingsScreen(
                 editingParent = null
             }
         )
+    }
+
+    if (showDeleteAccountDialog) {
+        val uid = authRepository.currentUser?.uid
+        if (uid != null) {
+            DeleteAccountDialog(
+                uid = uid,
+                authRepository = authRepository,
+                familyRepository = familyRepository,
+                activityRepository = activityRepository,
+                childRepository = childRepository,
+                parentRepository = parentRepository,
+                parentAssignmentRepository = parentAssignmentRepository,
+                onDismiss = { showDeleteAccountDialog = false }
+            )
+        }
     }
 }
 

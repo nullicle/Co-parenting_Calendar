@@ -13,6 +13,7 @@ import nz.co.chrisstevens.coparenting.R
 import nz.co.chrisstevens.coparenting.core.firebase.awaitResult
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -44,26 +45,10 @@ class AuthRepository {
      */
     suspend fun signInWithGoogle(context: Context): Result<Unit> {
         return try {
-            val option = GetSignInWithGoogleOption
-                .Builder(context.getString(R.string.default_web_client_id))
-                .build()
-            val request = GetCredentialRequest.Builder()
-                .addCredentialOption(option)
-                .build()
-
-            val response = CredentialManager.create(context).getCredential(context, request)
-            val credential = response.credential
-
-            if (credential is CustomCredential &&
-                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-            ) {
-                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                val firebaseCredential = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
-                auth.signInWithCredential(firebaseCredential).awaitResult()
-                Result.success(Unit)
-            } else {
-                Result.failure(IllegalStateException("Unexpected credential type returned by Credential Manager"))
-            }
+            val credential = fetchGoogleAuthCredential(context)
+                ?: return Result.failure(IllegalStateException("Unexpected credential type returned by Credential Manager"))
+            auth.signInWithCredential(credential).awaitResult()
+            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: GetCredentialException) {
@@ -75,7 +60,65 @@ class AuthRepository {
         }
     }
 
+    /**
+     * Re-proves the current user's identity with a fresh Google credential. Firebase requires
+     * this before sensitive operations like account deletion if the existing sign-in is more
+     * than a few minutes old (surfaced as FirebaseAuthRecentLoginRequiredException) - call this,
+     * then retry the sensitive operation.
+     */
+    suspend fun reauthenticateWithGoogle(context: Context): Result<Unit> {
+        return try {
+            val user = auth.currentUser
+                ?: return Result.failure(IllegalStateException("No signed-in user to reauthenticate"))
+            val credential = fetchGoogleAuthCredential(context)
+                ?: return Result.failure(IllegalStateException("Unexpected credential type returned by Credential Manager"))
+            user.reauthenticate(credential).awaitResult()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: GetCredentialException) {
+            Log.w(TAG, "Google reauthentication was cancelled or unavailable", e)
+            Result.failure(e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Google reauthentication failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Deletes the Firebase Authentication account itself. Like reauthentication, this requires
+     * a recent sign-in and can fail with FirebaseAuthRecentLoginRequiredException - callers
+     * should catch that specifically and prompt [reauthenticateWithGoogle] before retrying.
+     */
+    suspend fun deleteFirebaseAccount(): Result<Unit> = runCatching {
+        val user = auth.currentUser ?: throw IllegalStateException("No signed-in user to delete")
+        user.delete().awaitResult()
+        Unit
+    }.onFailure { Log.e(TAG, "Failed to delete Firebase account", it) }
+
     fun signOut() {
         auth.signOut()
+    }
+
+    /** Shared by sign-in and reauthentication - both need exactly the same Google credential. */
+    private suspend fun fetchGoogleAuthCredential(context: Context): AuthCredential? {
+        val option = GetSignInWithGoogleOption
+            .Builder(context.getString(R.string.default_web_client_id))
+            .build()
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(option)
+            .build()
+
+        val response = CredentialManager.create(context).getCredential(context, request)
+        val credential = response.credential
+
+        return if (credential is CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+            GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
+        } else {
+            null
+        }
     }
 }

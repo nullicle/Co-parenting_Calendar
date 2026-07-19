@@ -3,6 +3,7 @@ package nz.co.chrisstevens.coparenting.feature.family.data
 import android.util.Log
 import nz.co.chrisstevens.coparenting.core.firebase.awaitResult
 import nz.co.chrisstevens.coparenting.feature.family.domain.Family
+import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -15,6 +16,14 @@ private const val JOIN_CODE_LENGTH = 8
 
 /** Excludes 0, O, I, 1 - characters that are easy to mix up when read off a phone screen. */
 private const val JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+/**
+ * Subcollections that would live under families/{familyId} once cloud syncing of calendar data
+ * is implemented. Nothing writes to these yet - everything is still local-only JSON - so
+ * cleaning them up today is always a no-op. It's here so family/account deletion doesn't leave
+ * orphaned data behind once that syncing exists, without needing to touch this file again then.
+ */
+private val FAMILY_SUBCOLLECTIONS = listOf("activities", "children", "parents", "parentAssignments")
 
 class FamilyNotFoundException(message: String) : Exception(message)
 
@@ -68,29 +77,74 @@ class FamilyRepository {
     }.onFailure { Log.e(TAG, "Failed to join family", it) }
 
     /**
-     * Removes the current user from their family (deleting the family document entirely if that
-     * was the last member) and clears their own family reference, so the app routes them back
-     * into onboarding on next check. Never touches local repositories - callers handle that
-     * separately if they want to (e.g. the "leave and reset" developer tool).
+     * Removes the current user from their family and deletes their own Firestore user document,
+     * so the app routes them back into onboarding on next check. Reused as-is by account
+     * deletion - it needs exactly this same cleanup as its first step.
+     *
+     * Family membership is updated inside a transaction (see [removeMemberFromFamily]) rather
+     * than a plain read-then-write, so two members leaving at the same moment can't both read a
+     * stale member list and reach the wrong conclusion about who's left or who owns it.
      */
     suspend fun leaveFamily(uid: String): Result<Unit> = runCatching {
         val userDoc = firestore.collection(USERS_COLLECTION).document(uid).get().awaitResult()
         val familyId = userDoc.getString("familyId")
         if (familyId != null) {
-            runCatching {
-                val familyRef = firestore.collection(FAMILIES_COLLECTION).document(familyId)
-                familyRef.update("memberUids", FieldValue.arrayRemove(uid)).awaitResult()
-
-                val updatedDoc = familyRef.get().awaitResult()
-                val remainingMembers = (updatedDoc.get("memberUids") as? List<*>)?.size ?: 0
-                if (remainingMembers == 0) {
-                    familyRef.delete().awaitResult()
-                }
-            }.onFailure { Log.w(TAG, "Could not fully clean up family $familyId, clearing local reference anyway", it) }
+            runCatching { removeMemberFromFamily(familyId, uid) }
+                .onFailure { Log.w(TAG, "Could not fully clean up family $familyId, clearing local reference anyway", it) }
         }
         firestore.collection(USERS_COLLECTION).document(uid).delete().awaitResult()
         Unit
     }.onFailure { Log.e(TAG, "Failed to leave family", it) }
+
+    /**
+     * Atomically removes [uid] from the family: if [uid] was the last member, the family
+     * document is deleted (and its subcollections cleaned up afterwards); otherwise [uid] is
+     * dropped from memberUids, reassigning ownership to another remaining member first if [uid]
+     * was the owner, so the family is never left ownerless.
+     */
+    private suspend fun removeMemberFromFamily(familyId: String, uid: String) {
+        val familyRef = firestore.collection(FAMILIES_COLLECTION).document(familyId)
+
+        val deletedEmptyFamily = firestore.runTransaction { transaction ->
+            val snapshot = transaction.get(familyRef)
+            if (!snapshot.exists()) return@runTransaction false
+
+            val members = (snapshot.get("memberUids") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+            val remaining = members - uid
+
+            if (remaining.isEmpty()) {
+                transaction.delete(familyRef)
+                true
+            } else {
+                val updates = mutableMapOf<String, Any>("memberUids" to remaining)
+                if (snapshot.getString("ownerUid") == uid) {
+                    updates["ownerUid"] = remaining.first()
+                }
+                transaction.update(familyRef, updates)
+                false
+            }
+        }.awaitResult()
+
+        if (deletedEmptyFamily) {
+            deleteFamilySubcollections(familyId)
+        }
+    }
+
+    private suspend fun deleteFamilySubcollections(familyId: String) {
+        val familyRef = firestore.collection(FAMILIES_COLLECTION).document(familyId)
+        FAMILY_SUBCOLLECTIONS.forEach { subcollection ->
+            deleteAllDocumentsIn(familyRef.collection(subcollection))
+        }
+    }
+
+    /** Batches the delete so it's one round-trip rather than one per document. */
+    private suspend fun deleteAllDocumentsIn(collectionRef: CollectionReference) {
+        val snapshot = collectionRef.get().awaitResult()
+        if (snapshot.isEmpty) return
+        val batch = firestore.batch()
+        snapshot.documents.forEach { doc -> batch.delete(doc.reference) }
+        batch.commit().awaitResult()
+    }
 
     private suspend fun saveFamilyReference(uid: String, familyId: String) {
         firestore.collection(USERS_COLLECTION).document(uid)

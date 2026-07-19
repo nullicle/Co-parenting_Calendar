@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "351133157091-iem3i5tkod95r4crsngaf2k56j75act0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "nz.co.chrisstevens.coparenting",
+            "certificate_hash": "70f4d8dfea8fa802e677a61548d2c96ffae0f266"
+          }
+        },
+        {
           "client_id": "351133157091-lp6b59rncgmnbtcp14neq6vdht3tcigc.apps.googleusercontent.com",
           "client_type": 3
         }
