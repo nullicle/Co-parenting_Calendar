@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import nz.co.chrisstevens.coparenting.core.designsystem.ErrorScreen
 import nz.co.chrisstevens.coparenting.core.designsystem.LoadingScreen
+import nz.co.chrisstevens.coparenting.core.notifications.NotificationTokenRepository
 import nz.co.chrisstevens.coparenting.core.util.enumSaver
 import nz.co.chrisstevens.coparenting.feature.activity.data.ActivityRepository
 import nz.co.chrisstevens.coparenting.feature.auth.data.AuthRepository
@@ -56,7 +57,8 @@ fun CoParentingCalendarApp(
     parentAssignmentRepository: ParentAssignmentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
     authRepository: AuthRepository,
-    familyRepository: FamilyRepository
+    familyRepository: FamilyRepository,
+    notificationTokenRepository: NotificationTokenRepository
 ) {
     val user = authRepository.currentUser
     if (user == null) {
@@ -69,6 +71,10 @@ fun CoParentingCalendarApp(
 
     LaunchedEffect(user.uid) {
         familyRepository.syncUserProfile(user.uid, user.displayName, user.email)
+    }
+
+    LaunchedEffect(user.uid) {
+        notificationTokenRepository.syncToken(user.uid)
     }
 
     LaunchedEffect(user.uid, retryTrigger) {

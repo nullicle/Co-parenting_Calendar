@@ -6,6 +6,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import nz.co.chrisstevens.coparenting.core.firebase.lastModifiedByField
 import nz.co.chrisstevens.coparenting.feature.parent.domain.Parent
 import nz.co.chrisstevens.coparenting.feature.parent.domain.ParentSlot
 
@@ -72,7 +73,8 @@ class ParentRepository {
 
     fun updateParent(parent: Parent) {
         val familyId = familyId ?: return
-        parentsCollection(familyId).document(parent.slot.name).set(parent.toFirestoreMap())
+        val data = parent.toFirestoreMap() + lastModifiedByField()
+        parentsCollection(familyId).document(parent.slot.name).set(data)
             .addOnFailureListener { Log.e(TAG, "Failed to save parent ${parent.slot}", it) }
     }
 

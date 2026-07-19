@@ -6,6 +6,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import nz.co.chrisstevens.coparenting.core.firebase.lastModifiedByField
 import nz.co.chrisstevens.coparenting.feature.activity.domain.Activity
 import nz.co.chrisstevens.coparenting.feature.activity.domain.ActivityIconType
 import nz.co.chrisstevens.coparenting.feature.activity.domain.RepeatRule
@@ -74,7 +75,8 @@ class ActivityRepository {
 
     private fun writeActivity(activity: Activity) {
         val familyId = familyId ?: return
-        activitiesCollection(familyId).document(activity.id).set(activity.toFirestoreMap())
+        val data = activity.toFirestoreMap() + lastModifiedByField()
+        activitiesCollection(familyId).document(activity.id).set(data)
             .addOnFailureListener { Log.e(TAG, "Failed to save activity ${activity.id}", it) }
     }
 

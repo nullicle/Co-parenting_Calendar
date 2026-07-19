@@ -13,3 +13,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Firebase Cloud Functions
+/functions/node_modules
+/functions/lib
+/firebase-debug.log
+/firestore-debug.log
+/ui-debug.log
+/.firebase
+*serviceAccountKey*.json

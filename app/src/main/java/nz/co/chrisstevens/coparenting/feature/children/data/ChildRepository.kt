@@ -6,6 +6,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import nz.co.chrisstevens.coparenting.core.firebase.lastModifiedByField
 import nz.co.chrisstevens.coparenting.feature.children.domain.Child
 
 private const val TAG = "ChildRepository"
@@ -61,7 +62,8 @@ class ChildRepository {
 
     private fun writeChild(child: Child) {
         val familyId = familyId ?: return
-        childrenCollection(familyId).document(child.id).set(child.toFirestoreMap())
+        val data = child.toFirestoreMap() + lastModifiedByField()
+        childrenCollection(familyId).document(child.id).set(data)
             .addOnFailureListener { Log.e(TAG, "Failed to save child ${child.id}", it) }
     }
 

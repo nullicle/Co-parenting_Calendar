@@ -16,8 +16,8 @@ android {
         applicationId = "nz.co.chrisstevens.coparenting"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +36,12 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // False positive: this check is about FragmentActivity's old permission-delegation
+        // bug, not applicable here - MainActivity is a plain ComponentActivity with no
+        // Fragments anywhere in the app.
+        disable += "InvalidFragmentVersionForActivityResult"
+    }
 }
 
 dependencies {
@@ -43,6 +49,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.google.id)

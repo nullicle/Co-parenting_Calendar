@@ -6,6 +6,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import nz.co.chrisstevens.coparenting.core.firebase.lastModifiedByField
 import nz.co.chrisstevens.coparenting.feature.parent.domain.ParentSlot
 import java.time.LocalDate
 
@@ -55,8 +56,9 @@ class ParentAssignmentRepository {
 
     fun assign(date: LocalDate, slot: ParentSlot) {
         val familyId = familyId ?: return
+        val data = mapOf("parent" to slot.name) + lastModifiedByField()
         assignmentsCollection(familyId).document(date.toString())
-            .set(mapOf("parent" to slot.name))
+            .set(data)
             .addOnFailureListener { Log.e(TAG, "Failed to save assignment for $date", it) }
     }
 
