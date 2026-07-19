@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Person
@@ -57,6 +58,9 @@ import nz.co.chrisstevens.coparenting.core.firebase.FirestoreTestResult
 import nz.co.chrisstevens.coparenting.core.firebase.isFirebaseAppInitialized
 import nz.co.chrisstevens.coparenting.feature.auth.data.AuthRepository
 import nz.co.chrisstevens.coparenting.feature.auth.ui.GoogleSignInButton
+import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
+import nz.co.chrisstevens.coparenting.feature.children.domain.Child
+import nz.co.chrisstevens.coparenting.feature.children.ui.ChildDialog
 import nz.co.chrisstevens.coparenting.feature.family.data.FamilyRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.toFamilyErrorMessage
 import nz.co.chrisstevens.coparenting.feature.family.ui.familyMemberLabels
@@ -67,15 +71,20 @@ import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreference
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreferenceRepository
 import kotlinx.coroutines.launch
 
+private sealed class ChildDialogState {
+    object Adding : ChildDialogState()
+    data class Editing(val child: Child) : ChildDialogState()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    childRepository: ChildRepository,
     parentRepository: ParentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
     authRepository: AuthRepository,
     familyRepository: FamilyRepository,
     onBack: () -> Unit,
-    onOpenChildren: () -> Unit,
     onFamilyDeleted: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -84,6 +93,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    var childDialogState by remember { mutableStateOf<ChildDialogState?>(null) }
     var editingParent by remember { mutableStateOf<Parent?>(null) }
     var isLeavingFamily by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
@@ -181,15 +191,25 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection(title = "Children & Parents") {
+            SettingsSection(title = "Children") {
+                childRepository.children.forEach { child ->
+                    ListItem(
+                        headlineContent = { ColorDotLabel(child.colorArgb, child.name) },
+                        trailingContent = {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                        },
+                        modifier = Modifier.clickable { childDialogState = ChildDialogState.Editing(child) }
+                    )
+                    HorizontalDivider()
+                }
                 ListItem(
-                    headlineContent = { Text("Children") },
-                    trailingContent = {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                    },
-                    modifier = Modifier.clickable(onClick = onOpenChildren)
+                    leadingContent = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    headlineContent = { Text("Add Child") },
+                    modifier = Modifier.clickable { childDialogState = ChildDialogState.Adding }
                 )
-                HorizontalDivider()
+            }
+
+            SettingsSection(title = "Parents") {
                 parentRepository.parents.forEachIndexed { index, parent ->
                     ListItem(
                         headlineContent = { ColorDotLabel(parent.colorArgb, parent.name) },
@@ -243,7 +263,11 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 20.dp)
                         )
-                        val memberLabels = familyMemberLabels(family.memberUids, authRepository.currentUser)
+                        val memberLabels = familyMemberLabels(
+                            family.memberUids,
+                            authRepository.currentUser,
+                            familyRepository.memberDisplayNames
+                        )
                         memberLabels.forEach { label ->
                             ListItem(
                                 leadingContent = { Icon(Icons.Filled.Person, contentDescription = null) },
@@ -355,6 +379,34 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    when (val state = childDialogState) {
+        ChildDialogState.Adding -> {
+            ChildDialog(
+                initialChild = null,
+                onDismiss = { childDialogState = null },
+                onSave = { child ->
+                    childRepository.addChild(child)
+                    childDialogState = null
+                }
+            )
+        }
+        is ChildDialogState.Editing -> {
+            ChildDialog(
+                initialChild = state.child,
+                onDismiss = { childDialogState = null },
+                onSave = { child ->
+                    childRepository.updateChild(child)
+                    childDialogState = null
+                },
+                onDelete = {
+                    childRepository.deleteChild(state.child.id)
+                    childDialogState = null
+                }
+            )
+        }
+        null -> Unit
     }
 
     editingParent?.let { parent ->

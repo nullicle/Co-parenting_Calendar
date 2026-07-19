@@ -19,7 +19,6 @@ import nz.co.chrisstevens.coparenting.feature.auth.data.AuthRepository
 import nz.co.chrisstevens.coparenting.feature.auth.ui.SignInScreen
 import nz.co.chrisstevens.coparenting.feature.calendar.ui.CalendarScreen
 import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
-import nz.co.chrisstevens.coparenting.feature.children.ui.ChildrenScreen
 import nz.co.chrisstevens.coparenting.feature.family.data.FamilyRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.toFamilyErrorMessage
 import nz.co.chrisstevens.coparenting.feature.family.ui.FamilyOnboardingFlow
@@ -28,7 +27,7 @@ import nz.co.chrisstevens.coparenting.feature.parent.data.ParentRepository
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreferenceRepository
 import nz.co.chrisstevens.coparenting.feature.settings.ui.SettingsScreen
 
-private enum class AppScreen { CALENDAR, SETTINGS, CHILDREN }
+private enum class AppScreen { CALENDAR, SETTINGS }
 
 private sealed class FamilyCheckStatus {
     object Loading : FamilyCheckStatus()
@@ -67,6 +66,10 @@ fun CoParentingCalendarApp(
 
     var familyStatus by remember(user.uid) { mutableStateOf<FamilyCheckStatus>(FamilyCheckStatus.Loading) }
     var retryTrigger by remember(user.uid) { mutableIntStateOf(0) }
+
+    LaunchedEffect(user.uid) {
+        familyRepository.syncUserProfile(user.uid, user.displayName, user.email)
+    }
 
     LaunchedEffect(user.uid, retryTrigger) {
         familyStatus = try {
@@ -118,18 +121,13 @@ fun CoParentingCalendarApp(
                     modifier = Modifier.fillMaxSize()
                 )
                 AppScreen.SETTINGS -> SettingsScreen(
+                    childRepository = childRepository,
                     parentRepository = parentRepository,
                     themePreferenceRepository = themePreferenceRepository,
                     authRepository = authRepository,
                     familyRepository = familyRepository,
                     onBack = { screen = AppScreen.CALENDAR },
-                    onOpenChildren = { screen = AppScreen.CHILDREN },
                     onFamilyDeleted = { familyStatus = FamilyCheckStatus.NeedsOnboarding },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AppScreen.CHILDREN -> ChildrenScreen(
-                    childRepository = childRepository,
-                    onBack = { screen = AppScreen.SETTINGS },
                     modifier = Modifier.fillMaxSize()
                 )
             }

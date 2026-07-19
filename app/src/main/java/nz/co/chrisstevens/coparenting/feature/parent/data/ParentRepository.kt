@@ -16,8 +16,11 @@ private const val PARENTS_SUBCOLLECTION = "parents"
 /**
  * Firestore-backed: the two parents live at families/{familyId}/parents/ONE and .../TWO. There
  * are always exactly two - identified by a fixed [ParentSlot] used as the document id - so this
- * only ever updates, never adds or removes. The two documents are seeded with defaults when a
- * family is created (see FamilyRepository.createFamily), not here.
+ * only ever updates, never adds or removes. If a family is ever found with no parent documents
+ * (a brand new family, or an older one from before this seeding existed), [attach]'s listener
+ * seeds the two defaults itself the moment it sees an empty collection - self-healing rather
+ * than relying on family creation to have done it, so there's exactly one place responsible for
+ * "every family always has two parents."
  *
  * Same attach/detach/single-source-of-truth pattern as ActivityRepository - see that class for
  * the full explanation.
@@ -41,9 +44,22 @@ class ParentRepository {
                 return@addSnapshotListener
             }
             if (snapshot == null) return@addSnapshotListener
+            if (snapshot.isEmpty) {
+                seedDefaultParents(familyId)
+                return@addSnapshotListener
+            }
             parents.clear()
             parents.addAll(snapshot.documents.mapNotNull { it.toParentOrNull() })
         }
+    }
+
+    /** Fixed document ids, so this is safe to run redundantly (e.g. both devices seeing the family empty at once). */
+    private fun seedDefaultParents(familyId: String) {
+        val collection = parentsCollection(familyId)
+        val batch = firestore.batch()
+        batch.set(collection.document("ONE"), mapOf("name" to "Parent 1", "colorArgb" to 0xFF2196F3L))
+        batch.set(collection.document("TWO"), mapOf("name" to "Parent 2", "colorArgb" to 0xFF4CAF50L))
+        batch.commit().addOnFailureListener { Log.e(TAG, "Failed to seed default parents for family $familyId", it) }
     }
 
     /** Stops listening and clears local state - call when leaving the family/signing out. */

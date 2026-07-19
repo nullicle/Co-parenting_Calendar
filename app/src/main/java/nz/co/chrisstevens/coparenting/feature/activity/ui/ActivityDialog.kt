@@ -198,9 +198,15 @@ fun ActivityDialog(
                     }
                 }
 
-                if (children.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    Text("Children", modifier = Modifier.padding(bottom = 4.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                Text("Children", modifier = Modifier.padding(bottom = 4.dp))
+                if (children.isEmpty()) {
+                    Text(
+                        text = "No children added yet. Add one from Settings to assign activities to them.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
                     children.forEach { child ->
                         val checked = selectedChildIds.contains(child.id)
                         Row(verticalAlignment = Alignment.CenterVertically) {

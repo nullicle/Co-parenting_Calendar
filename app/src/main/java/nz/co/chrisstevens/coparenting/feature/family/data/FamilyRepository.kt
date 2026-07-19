@@ -8,15 +8,16 @@ import nz.co.chrisstevens.coparenting.core.firebase.awaitResult
 import nz.co.chrisstevens.coparenting.feature.family.domain.Family
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
 
 private const val TAG = "FamilyRepository"
 private const val FAMILIES_COLLECTION = "families"
 private const val USERS_COLLECTION = "users"
-private const val PARENTS_SUBCOLLECTION = "parents"
 private const val JOIN_CODE_LENGTH = 8
 
 /** Excludes 0, O, I, 1 - characters that are easy to mix up when read off a phone screen. */
@@ -44,6 +45,10 @@ class FamilyRepository {
     var currentFamily: Family? by mutableStateOf(null)
         private set
 
+    /** uid -> display name, for every current member of [currentFamily]. Refreshed whenever membership changes. */
+    var memberDisplayNames: Map<String, String> by mutableStateOf(emptyMap())
+        private set
+
     /** Starts (or restarts, if the family changed) the live listener for this family document. */
     fun attach(familyId: String) {
         if (this.familyId == familyId && listenerRegistration != null) return
@@ -56,7 +61,9 @@ class FamilyRepository {
                     return@addSnapshotListener
                 }
                 if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
-                currentFamily = snapshot.toFamily()
+                val family = snapshot.toFamily()
+                currentFamily = family
+                refreshMemberNames(family.memberUids)
             }
     }
 
@@ -66,6 +73,45 @@ class FamilyRepository {
         listenerRegistration = null
         familyId = null
         currentFamily = null
+        memberDisplayNames = emptyMap()
+    }
+
+    /**
+     * Records this user's display name/email on their users/{uid} document so other family
+     * members can resolve it (Firestore has no client-readable directory of other users'
+     * Firebase Auth profiles - this is the only way another member's name becomes visible).
+     * Call once per session as soon as a user is signed in; merged so it never clobbers
+     * [saveFamilyReference]'s familyId field or vice versa.
+     */
+    fun syncUserProfile(uid: String, displayName: String?, email: String?) {
+        val profile = buildMap {
+            displayName?.takeIf { it.isNotBlank() }?.let { put("displayName", it) }
+            email?.takeIf { it.isNotBlank() }?.let { put("email", it) }
+        }
+        if (profile.isEmpty()) return
+        firestore.collection(USERS_COLLECTION).document(uid)
+            .set(profile, SetOptions.merge())
+            .addOnFailureListener { Log.e(TAG, "Failed to sync user profile for $uid", it) }
+    }
+
+    /** One-time lookup of every member's stored profile - fixed, small family sizes make a single whereIn cheap. */
+    private fun refreshMemberNames(memberUids: List<String>) {
+        if (memberUids.isEmpty()) {
+            memberDisplayNames = emptyMap()
+            return
+        }
+        firestore.collection(USERS_COLLECTION)
+            .whereIn(FieldPath.documentId(), memberUids)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                memberDisplayNames = snapshot.documents.mapNotNull { doc ->
+                    val name = doc.getString("displayName")?.takeIf { it.isNotBlank() }
+                        ?: doc.getString("email")?.takeIf { it.isNotBlank() }
+                        ?: return@mapNotNull null
+                    doc.id to name
+                }.toMap()
+            }
+            .addOnFailureListener { Log.e(TAG, "Failed to load member names", it) }
     }
 
     /** The family the given user already belongs to, or null if they don't have one yet. */
@@ -86,7 +132,6 @@ class FamilyRepository {
             createdAt = System.currentTimeMillis()
         )
         familyRef.set(family.toFirestoreMap()).awaitResult()
-        seedDefaultParents(family.id)
         saveFamilyReference(ownerUid, family.id)
         family
     }.onFailure { Log.e(TAG, "Failed to create family", it) }
@@ -179,22 +224,9 @@ class FamilyRepository {
         batch.commit().awaitResult()
     }
 
-    /**
-     * Every new family starts with exactly two parents ("Parent 1"/"Parent 2", editable later
-     * from Settings) - the rest of the app assumes exactly two always exist, so they're seeded
-     * here rather than left for ParentRepository to invent on first read.
-     */
-    private suspend fun seedDefaultParents(familyId: String) {
-        val parentsRef = firestore.collection(FAMILIES_COLLECTION).document(familyId).collection(PARENTS_SUBCOLLECTION)
-        val batch = firestore.batch()
-        batch.set(parentsRef.document("ONE"), mapOf("name" to "Parent 1", "colorArgb" to 0xFF2196F3L))
-        batch.set(parentsRef.document("TWO"), mapOf("name" to "Parent 2", "colorArgb" to 0xFF4CAF50L))
-        batch.commit().awaitResult()
-    }
-
     private suspend fun saveFamilyReference(uid: String, familyId: String) {
         firestore.collection(USERS_COLLECTION).document(uid)
-            .set(mapOf("familyId" to familyId))
+            .set(mapOf("familyId" to familyId), SetOptions.merge())
             .awaitResult()
     }
 
