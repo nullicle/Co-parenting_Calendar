@@ -1,107 +1,117 @@
 package nz.co.chrisstevens.coparenting.feature.activity.data
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import nz.co.chrisstevens.coparenting.feature.activity.domain.Activity
 import nz.co.chrisstevens.coparenting.feature.activity.domain.ActivityIconType
 import nz.co.chrisstevens.coparenting.feature.activity.domain.RepeatRule
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 
+private const val TAG = "ActivityRepository"
+private const val FAMILIES_COLLECTION = "families"
+private const val ACTIVITIES_SUBCOLLECTION = "activities"
+
 /**
- * Stores activities as a small JSON file in app-private storage. No database, no DI framework -
- * just one class the UI reads from and writes through directly. [file] is exposed (read-only)
- * and [reload] is public so the Settings export/import feature can move raw JSON in and out
- * without this class needing to know anything about Storage Access Framework.
+ * Firestore-backed: activities live at families/{familyId}/activities, one document per
+ * activity keyed by its own id (the same client-generated UUID the domain model already used).
+ *
+ * [attach] starts a live snapshot listener that keeps [activities] in sync with every family
+ * member's changes in real time; [detach] stops it and clears local state. The listener is the
+ * *only* thing that ever mutates [activities] - the CRUD methods below just write to Firestore
+ * and let the listener reflect the change back, so there's a single source of truth and no risk
+ * of local state drifting from what's actually stored (Firestore's offline persistence means the
+ * listener still fires almost instantly with the optimistic local write, even before the server
+ * round-trip completes).
  */
-class ActivityRepository(context: Context) {
+class ActivityRepository {
 
-    val file = File(context.filesDir, "activities.json")
+    private val firestore = FirebaseFirestore.getInstance()
+    private var listenerRegistration: ListenerRegistration? = null
+    private var familyId: String? = null
 
-    val activities = mutableStateListOf<Activity>().apply { addAll(readFromDisk()) }
+    val activities = mutableStateListOf<Activity>()
 
-    fun reload() {
+    /** Starts (or restarts, if the family changed) the live listener for this family. */
+    fun attach(familyId: String) {
+        if (this.familyId == familyId && listenerRegistration != null) return
+        detach()
+        this.familyId = familyId
+        listenerRegistration = activitiesCollection(familyId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                // Leave existing state as-is rather than clearing it - a transient network blip
+                // shouldn't flash the calendar empty.
+                Log.e(TAG, "Activities listener error for family $familyId", error)
+                return@addSnapshotListener
+            }
+            if (snapshot == null) return@addSnapshotListener
+            activities.clear()
+            activities.addAll(snapshot.documents.mapNotNull { it.toActivityOrNull() })
+        }
+    }
+
+    /** Stops listening and clears local state - call when leaving the family/signing out. */
+    fun detach() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+        familyId = null
         activities.clear()
-        activities.addAll(readFromDisk())
     }
 
-    /** Wipes every activity, local only - used by the developer "reset local data" tools. */
-    fun clear() {
-        activities.clear()
-        file.delete()
-    }
+    fun addActivity(activity: Activity) = writeActivity(activity)
 
-    fun addActivity(activity: Activity) {
-        activities.add(activity)
-        writeToDisk()
-    }
-
-    fun updateActivity(activity: Activity) {
-        val index = activities.indexOfFirst { it.id == activity.id }
-        if (index != -1) activities[index] = activity
-        writeToDisk()
-    }
+    fun updateActivity(activity: Activity) = writeActivity(activity)
 
     fun deleteActivity(activityId: String) {
-        activities.removeAll { it.id == activityId }
-        writeToDisk()
+        val familyId = familyId ?: return
+        activitiesCollection(familyId).document(activityId).delete()
+            .addOnFailureListener { Log.e(TAG, "Failed to delete activity $activityId", it) }
     }
 
-    private fun readFromDisk(): List<Activity> {
-        if (!file.exists()) return emptyList()
-        val json = JSONArray(file.readText())
-        return (0 until json.length()).mapNotNull { index ->
-            runCatching { parseActivity(json.getJSONObject(index)) }.getOrNull()
-        }
+    private fun writeActivity(activity: Activity) {
+        val familyId = familyId ?: return
+        activitiesCollection(familyId).document(activity.id).set(activity.toFirestoreMap())
+            .addOnFailureListener { Log.e(TAG, "Failed to save activity ${activity.id}", it) }
     }
 
-    private fun parseActivity(obj: JSONObject): Activity {
-        val childIdsJson = obj.optJSONArray("childIds")
-        val childIds = if (childIdsJson != null) {
-            (0 until childIdsJson.length()).map { childIdsJson.getString(it) }
-        } else {
-            emptyList()
-        }
-        val date = LocalDate.parse(obj.getString("date"))
-        return Activity(
-            id = obj.getString("id"),
-            date = date,
-            endDate = if (obj.has("endDate")) LocalDate.parse(obj.getString("endDate")) else date,
-            startTime = LocalTime.parse(obj.getString("startTime")),
-            endTime = obj.optString("endTime", "").takeIf { it.isNotBlank() }?.let(LocalTime::parse),
-            title = obj.getString("title"),
-            location = obj.optString("location", ""),
-            notes = obj.optString("notes", ""),
-            childIds = childIds,
-            repeat = runCatching { RepeatRule.valueOf(obj.optString("repeat", "NEVER")) }
-                .getOrDefault(RepeatRule.NEVER),
-            icon = runCatching { ActivityIconType.valueOf(obj.optString("icon", "OTHER")) }
-                .getOrDefault(ActivityIconType.OTHER)
-        )
-    }
-
-    private fun writeToDisk() {
-        val json = JSONArray()
-        activities.forEach { activity ->
-            json.put(
-                JSONObject().apply {
-                    put("id", activity.id)
-                    put("date", activity.date.toString())
-                    put("endDate", activity.endDate.toString())
-                    put("startTime", activity.startTime.toString())
-                    put("endTime", activity.endTime?.toString() ?: "")
-                    put("title", activity.title)
-                    put("location", activity.location)
-                    put("notes", activity.notes)
-                    put("childIds", JSONArray(activity.childIds))
-                    put("repeat", activity.repeat.name)
-                    put("icon", activity.icon.name)
-                }
-            )
-        }
-        file.writeText(json.toString())
-    }
+    private fun activitiesCollection(familyId: String): CollectionReference =
+        firestore.collection(FAMILIES_COLLECTION).document(familyId).collection(ACTIVITIES_SUBCOLLECTION)
 }
+
+private fun DocumentSnapshot.toActivityOrNull(): Activity? = runCatching {
+    val childIds = (get("childIds") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+    val date = LocalDate.parse(getString("date"))
+    Activity(
+        id = id,
+        date = date,
+        endDate = getString("endDate")?.let(LocalDate::parse) ?: date,
+        startTime = LocalTime.parse(getString("startTime")),
+        endTime = getString("endTime")?.takeIf { it.isNotBlank() }?.let(LocalTime::parse),
+        title = getString("title").orEmpty(),
+        location = getString("location").orEmpty(),
+        notes = getString("notes").orEmpty(),
+        childIds = childIds,
+        repeat = getString("repeat")?.let(RepeatRule::valueOf) ?: RepeatRule.NEVER,
+        icon = getString("icon")?.let(ActivityIconType::valueOf) ?: ActivityIconType.OTHER
+    )
+}.getOrElse {
+    Log.w(TAG, "Skipping malformed activity document $id", it)
+    null
+}
+
+private fun Activity.toFirestoreMap(): Map<String, Any> = mapOf(
+    "date" to date.toString(),
+    "endDate" to endDate.toString(),
+    "startTime" to startTime.toString(),
+    "endTime" to (endTime?.toString() ?: ""),
+    "title" to title,
+    "location" to location,
+    "notes" to notes,
+    "childIds" to childIds,
+    "repeat" to repeat.name,
+    "icon" to icon.name
+)

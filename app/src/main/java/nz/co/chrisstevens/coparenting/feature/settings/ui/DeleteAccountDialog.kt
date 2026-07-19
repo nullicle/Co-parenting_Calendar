@@ -21,12 +21,8 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.firestore.FirebaseFirestoreException
-import nz.co.chrisstevens.coparenting.feature.activity.data.ActivityRepository
 import nz.co.chrisstevens.coparenting.feature.auth.data.AuthRepository
-import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.FamilyRepository
-import nz.co.chrisstevens.coparenting.feature.parent.data.ParentAssignmentRepository
-import nz.co.chrisstevens.coparenting.feature.parent.data.ParentRepository
 import nz.co.chrisstevens.coparenting.feature.settings.data.deleteAccount
 import kotlinx.coroutines.launch
 
@@ -51,10 +47,6 @@ fun DeleteAccountDialog(
     uid: String,
     authRepository: AuthRepository,
     familyRepository: FamilyRepository,
-    activityRepository: ActivityRepository,
-    childRepository: ChildRepository,
-    parentRepository: ParentRepository,
-    parentAssignmentRepository: ParentAssignmentRepository,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -67,11 +59,7 @@ fun DeleteAccountDialog(
             val result = deleteAccount(
                 uid = uid,
                 authRepository = authRepository,
-                familyRepository = familyRepository,
-                activityRepository = activityRepository,
-                childRepository = childRepository,
-                parentRepository = parentRepository,
-                parentAssignmentRepository = parentAssignmentRepository
+                familyRepository = familyRepository
             )
             result.onFailure { error ->
                 step = if (error is FirebaseAuthRecentLoginRequiredException) {
@@ -89,10 +77,9 @@ fun DeleteAccountDialog(
             title = { Text("Delete account?") },
             text = {
                 Text(
-                    "This permanently deletes your account and sign-in. Activities, children, " +
-                        "and parents stored on this device will be erased. If you're the only " +
-                        "member of your family, the shared family will be deleted too. " +
-                        "This cannot be undone."
+                    "This permanently deletes your account and sign-in. If you're the only " +
+                        "member of your family, the shared family and its calendar will be " +
+                        "deleted too. This cannot be undone."
                 )
             },
             confirmButton = {

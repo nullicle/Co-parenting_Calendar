@@ -1,8 +1,5 @@
 package nz.co.chrisstevens.coparenting.feature.settings.ui
 
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,48 +43,37 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import nz.co.chrisstevens.coparenting.core.designsystem.ColorDotLabel
 import nz.co.chrisstevens.coparenting.core.designsystem.SettingsSection
 import nz.co.chrisstevens.coparenting.core.firebase.FirebaseConnectionTester
 import nz.co.chrisstevens.coparenting.core.firebase.FirestoreTestResult
 import nz.co.chrisstevens.coparenting.core.firebase.isFirebaseAppInitialized
-import nz.co.chrisstevens.coparenting.feature.activity.data.ActivityRepository
 import nz.co.chrisstevens.coparenting.feature.auth.data.AuthRepository
 import nz.co.chrisstevens.coparenting.feature.auth.ui.GoogleSignInButton
-import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.FamilyRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.toFamilyErrorMessage
-import nz.co.chrisstevens.coparenting.feature.family.domain.Family
 import nz.co.chrisstevens.coparenting.feature.family.ui.familyMemberLabels
-import nz.co.chrisstevens.coparenting.feature.parent.data.ParentAssignmentRepository
 import nz.co.chrisstevens.coparenting.feature.parent.data.ParentRepository
 import nz.co.chrisstevens.coparenting.feature.parent.domain.Parent
 import nz.co.chrisstevens.coparenting.feature.parent.ui.ParentDialog
-import nz.co.chrisstevens.coparenting.feature.settings.data.DataBackupManager
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreference
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreferenceRepository
-import nz.co.chrisstevens.coparenting.feature.settings.data.clearAllLocalData
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    activityRepository: ActivityRepository,
-    childRepository: ChildRepository,
     parentRepository: ParentRepository,
-    parentAssignmentRepository: ParentAssignmentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
-    dataBackupManager: DataBackupManager,
     authRepository: AuthRepository,
     familyRepository: FamilyRepository,
-    family: Family,
     onBack: () -> Unit,
     onOpenChildren: () -> Unit,
     onFamilyDeleted: () -> Unit,
@@ -100,27 +86,7 @@ fun SettingsScreen(
 
     var editingParent by remember { mutableStateOf<Parent?>(null) }
     var isLeavingFamily by remember { mutableStateOf(false) }
-    var isResettingEverything by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            runCatching { dataBackupManager.exportTo(uri) }
-                .onSuccess { Toast.makeText(context, "Data exported", Toast.LENGTH_SHORT).show() }
-                .onFailure { Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show() }
-        }
-    }
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            runCatching { dataBackupManager.importFrom(uri) }
-                .onSuccess { Toast.makeText(context, "Data imported", Toast.LENGTH_SHORT).show() }
-                .onFailure { Toast.makeText(context, "Import failed", Toast.LENGTH_SHORT).show() }
-        }
-    }
 
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
@@ -237,70 +203,80 @@ fun SettingsScreen(
             }
 
             SettingsSection(title = "Family") {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Shared Calendar", style = MaterialTheme.typography.titleMedium)
-
+                val family = familyRepository.currentFamily
+                if (family == null) {
                     Text(
-                        text = "Invite code",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = "Loading family details…",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 16.dp)
+                        modifier = Modifier.padding(16.dp)
                     )
-                    Text(
-                        text = family.joinCode,
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(family.joinCode))
-                            scope.launch { snackbarHostState.showSnackbar("Invite code copied.") }
-                        },
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text(" Copy Invite Code")
-                    }
+                } else {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Shared Calendar", style = MaterialTheme.typography.titleMedium)
 
-                    Text(
-                        text = "Members",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 20.dp)
-                    )
-                    val memberLabels = familyMemberLabels(family.memberUids, authRepository.currentUser)
-                    memberLabels.forEach { label ->
-                        ListItem(
-                            leadingContent = { Icon(Icons.Filled.Person, contentDescription = null) },
-                            headlineContent = { Text(label) }
+                        Text(
+                            text = "Invite code",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 16.dp)
                         )
-                    }
-
-                    OutlinedButton(
-                        enabled = !isLeavingFamily,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.padding(top = 12.dp),
-                        onClick = {
-                            val uid = authRepository.currentUser?.uid ?: return@OutlinedButton
-                            isLeavingFamily = true
-                            scope.launch {
-                                val result = familyRepository.leaveFamily(uid)
-                                isLeavingFamily = false
-                                result.onSuccess { onFamilyDeleted() }
-                                    .onFailure {
-                                        snackbarHostState.showSnackbar(it.toFamilyErrorMessage())
-                                    }
-                            }
+                        Text(
+                            text = family.joinCode,
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(family.joinCode))
+                                scope.launch { snackbarHostState.showSnackbar("Invite code copied.") }
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(" Copy Invite Code")
                         }
-                    ) {
-                        if (isLeavingFamily) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.error
+
+                        Text(
+                            text = "Members",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 20.dp)
+                        )
+                        val memberLabels = familyMemberLabels(family.memberUids, authRepository.currentUser)
+                        memberLabels.forEach { label ->
+                            ListItem(
+                                leadingContent = { Icon(Icons.Filled.Person, contentDescription = null) },
+                                headlineContent = { Text(label) }
                             )
-                        } else {
-                            Text("Leave Family")
+                        }
+
+                        OutlinedButton(
+                            enabled = !isLeavingFamily,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.padding(top = 12.dp),
+                            onClick = {
+                                val uid = authRepository.currentUser?.uid ?: return@OutlinedButton
+                                isLeavingFamily = true
+                                scope.launch {
+                                    val result = familyRepository.leaveFamily(uid)
+                                    isLeavingFamily = false
+                                    result.onSuccess { onFamilyDeleted() }
+                                        .onFailure {
+                                            snackbarHostState.showSnackbar(it.toFamilyErrorMessage())
+                                        }
+                                }
+                            }
+                        ) {
+                            if (isLeavingFamily) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Text("Leave Family")
+                            }
                         }
                     }
                 }
@@ -322,31 +298,6 @@ fun SettingsScreen(
                     selected = themePreferenceRepository.theme == ThemePreference.DARK,
                     onClick = { themePreferenceRepository.setTheme(ThemePreference.DARK) }
                 )
-            }
-
-            SettingsSection(title = "Data") {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Save your activities, children, and parents to a file, or restore from one.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { exportLauncher.launch("coparenting-calendar-backup.json") },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Export data") }
-                        OutlinedButton(
-                            onClick = { importLauncher.launch(arrayOf("application/json")) },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Import data") }
-                    }
-                }
             }
 
             SettingsSection(title = "About") {
@@ -403,77 +354,6 @@ fun SettingsScreen(
                     )
                 }
             }
-
-            SettingsSection(title = "Developer Tools") {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "This section is temporary and intended only during development.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Text(
-                        text = "Wipes every local activity, child, parent, and parent assignment. " +
-                            "You stay signed in and stay in the same family.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                    )
-                    Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        onClick = {
-                            clearAllLocalData(
-                                activityRepository = activityRepository,
-                                childRepository = childRepository,
-                                parentRepository = parentRepository,
-                                parentAssignmentRepository = parentAssignmentRepository
-                            )
-                            scope.launch { snackbarHostState.showSnackbar("Local data cleared.") }
-                        }
-                    ) { Text("Reset Local Data") }
-
-                    Text(
-                        text = "Leaves the current family and wipes all local data - as if the app " +
-                            "were freshly installed, while staying signed in.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp)
-                    )
-                    Button(
-                        enabled = !isResettingEverything,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        onClick = {
-                            val uid = authRepository.currentUser?.uid ?: return@Button
-                            isResettingEverything = true
-                            scope.launch {
-                                val result = familyRepository.leaveFamily(uid)
-                                isResettingEverything = false
-                                result.onSuccess {
-                                    clearAllLocalData(
-                                        activityRepository = activityRepository,
-                                        childRepository = childRepository,
-                                        parentRepository = parentRepository,
-                                        parentAssignmentRepository = parentAssignmentRepository
-                                    )
-                                    onFamilyDeleted()
-                                }.onFailure {
-                                    snackbarHostState.showSnackbar(it.toFamilyErrorMessage())
-                                }
-                            }
-                        }
-                    ) {
-                        if (isResettingEverything) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onError
-                            )
-                        } else {
-                            Text("Leave Family and Reset Everything")
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -495,10 +375,6 @@ fun SettingsScreen(
                 uid = uid,
                 authRepository = authRepository,
                 familyRepository = familyRepository,
-                activityRepository = activityRepository,
-                childRepository = childRepository,
-                parentRepository = parentRepository,
-                parentAssignmentRepository = parentAssignmentRepository,
                 onDismiss = { showDeleteAccountDialog = false }
             )
         }

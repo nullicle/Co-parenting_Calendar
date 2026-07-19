@@ -1,62 +1,72 @@
 package nz.co.chrisstevens.coparenting.feature.parent.data
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import nz.co.chrisstevens.coparenting.feature.parent.domain.ParentSlot
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
 import java.time.LocalDate
 
+private const val TAG = "ParentAssignmentRepository"
+private const val FAMILIES_COLLECTION = "families"
+private const val PARENT_ASSIGNMENTS_SUBCOLLECTION = "parentAssignments"
+
 /**
- * Stores which parent slot "owns" each date, as a small JSON file - same pattern as the other
- * repositories.
+ * Firestore-backed: which parent "owns" each date lives at
+ * families/{familyId}/parentAssignments/{yyyy-MM-dd}, one document per date. Same attach/detach/
+ * single-source-of-truth pattern as ActivityRepository - see that class for the full
+ * explanation, just Map-shaped here instead of List-shaped.
  */
-class ParentAssignmentRepository(context: Context) {
+class ParentAssignmentRepository {
 
-    val file = File(context.filesDir, "parent_assignments.json")
+    private val firestore = FirebaseFirestore.getInstance()
+    private var listenerRegistration: ListenerRegistration? = null
+    private var familyId: String? = null
 
-    val assignments = mutableStateMapOf<LocalDate, ParentSlot>().apply { putAll(readFromDisk()) }
+    val assignments = mutableStateMapOf<LocalDate, ParentSlot>()
 
-    fun reload() {
-        assignments.clear()
-        assignments.putAll(readFromDisk())
+    /** Starts (or restarts, if the family changed) the live listener for this family. */
+    fun attach(familyId: String) {
+        if (this.familyId == familyId && listenerRegistration != null) return
+        detach()
+        this.familyId = familyId
+        listenerRegistration = assignmentsCollection(familyId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "Parent assignments listener error for family $familyId", error)
+                return@addSnapshotListener
+            }
+            if (snapshot == null) return@addSnapshotListener
+            assignments.clear()
+            snapshot.documents.forEach { doc ->
+                doc.toAssignmentOrNull()?.let { (date, slot) -> assignments[date] = slot }
+            }
+        }
     }
 
-    /** Wipes every assignment, local only - used by the developer "reset local data" tools. */
-    fun clear() {
+    /** Stops listening and clears local state - call when leaving the family/signing out. */
+    fun detach() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+        familyId = null
         assignments.clear()
-        file.delete()
     }
 
     fun assign(date: LocalDate, slot: ParentSlot) {
-        assignments[date] = slot
-        writeToDisk()
+        val familyId = familyId ?: return
+        assignmentsCollection(familyId).document(date.toString())
+            .set(mapOf("parent" to slot.name))
+            .addOnFailureListener { Log.e(TAG, "Failed to save assignment for $date", it) }
     }
 
-    private fun readFromDisk(): Map<LocalDate, ParentSlot> {
-        if (!file.exists()) return emptyMap()
-        val json = JSONArray(file.readText())
-        val result = mutableMapOf<LocalDate, ParentSlot>()
-        for (index in 0 until json.length()) {
-            runCatching {
-                val obj = json.getJSONObject(index)
-                result[LocalDate.parse(obj.getString("date"))] = ParentSlot.valueOf(obj.getString("parent"))
-            }
-        }
-        return result
-    }
+    private fun assignmentsCollection(familyId: String): CollectionReference =
+        firestore.collection(FAMILIES_COLLECTION).document(familyId).collection(PARENT_ASSIGNMENTS_SUBCOLLECTION)
+}
 
-    private fun writeToDisk() {
-        val json = JSONArray()
-        assignments.forEach { (date, slot) ->
-            json.put(
-                JSONObject().apply {
-                    put("date", date.toString())
-                    put("parent", slot.name)
-                }
-            )
-        }
-        file.writeText(json.toString())
-    }
+private fun DocumentSnapshot.toAssignmentOrNull(): Pair<LocalDate, ParentSlot>? = runCatching {
+    LocalDate.parse(id) to ParentSlot.valueOf(getString("parent")!!)
+}.getOrElse {
+    Log.w(TAG, "Skipping malformed parent assignment document $id", it)
+    null
 }

@@ -1,81 +1,81 @@
 package nz.co.chrisstevens.coparenting.feature.parent.data
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import nz.co.chrisstevens.coparenting.feature.parent.domain.Parent
 import nz.co.chrisstevens.coparenting.feature.parent.domain.ParentSlot
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
+
+private const val TAG = "ParentRepository"
+private const val FAMILIES_COLLECTION = "families"
+private const val PARENTS_SUBCOLLECTION = "parents"
 
 /**
- * Stores the two parents' editable name/colour. There are always exactly two - identified by a
- * fixed [ParentSlot] - so this only ever updates, never adds or removes.
+ * Firestore-backed: the two parents live at families/{familyId}/parents/ONE and .../TWO. There
+ * are always exactly two - identified by a fixed [ParentSlot] used as the document id - so this
+ * only ever updates, never adds or removes. The two documents are seeded with defaults when a
+ * family is created (see FamilyRepository.createFamily), not here.
+ *
+ * Same attach/detach/single-source-of-truth pattern as ActivityRepository - see that class for
+ * the full explanation.
  */
-class ParentRepository(context: Context) {
+class ParentRepository {
 
-    val file = File(context.filesDir, "parents.json")
+    private val firestore = FirebaseFirestore.getInstance()
+    private var listenerRegistration: ListenerRegistration? = null
+    private var familyId: String? = null
 
-    val parents = mutableStateListOf<Parent>().apply { addAll(loadParents()) }
+    val parents = mutableStateListOf<Parent>()
 
-    fun reload() {
-        parents.clear()
-        parents.addAll(loadParents())
+    /** Starts (or restarts, if the family changed) the live listener for this family. */
+    fun attach(familyId: String) {
+        if (this.familyId == familyId && listenerRegistration != null) return
+        detach()
+        this.familyId = familyId
+        listenerRegistration = parentsCollection(familyId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "Parents listener error for family $familyId", error)
+                return@addSnapshotListener
+            }
+            if (snapshot == null) return@addSnapshotListener
+            parents.clear()
+            parents.addAll(snapshot.documents.mapNotNull { it.toParentOrNull() })
+        }
     }
 
-    /**
-     * Resets both parents back to their defaults, local only - used by the developer "reset
-     * local data" tools. Never removes down to zero parents; the rest of the app assumes
-     * exactly two always exist.
-     */
-    fun resetToDefaults() {
+    /** Stops listening and clears local state - call when leaving the family/signing out. */
+    fun detach() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+        familyId = null
         parents.clear()
-        parents.addAll(defaultParents())
-        file.delete()
     }
 
     fun updateParent(parent: Parent) {
-        val index = parents.indexOfFirst { it.slot == parent.slot }
-        if (index != -1) parents[index] = parent
-        writeToDisk()
+        val familyId = familyId ?: return
+        parentsCollection(familyId).document(parent.slot.name).set(parent.toFirestoreMap())
+            .addOnFailureListener { Log.e(TAG, "Failed to save parent ${parent.slot}", it) }
     }
 
-    private fun loadParents(): List<Parent> {
-        val stored = readFromDisk()
-        return defaultParents().map { default -> stored.find { it.slot == default.slot } ?: default }
-    }
-
-    private fun defaultParents(): List<Parent> = listOf(
-        Parent(ParentSlot.ONE, "Parent 1", 0xFF2196F3),
-        Parent(ParentSlot.TWO, "Parent 2", 0xFF4CAF50)
-    )
-
-    private fun readFromDisk(): List<Parent> {
-        if (!file.exists()) return emptyList()
-        val json = JSONArray(file.readText())
-        return (0 until json.length()).mapNotNull { index ->
-            runCatching {
-                val obj = json.getJSONObject(index)
-                Parent(
-                    slot = ParentSlot.valueOf(obj.getString("slot")),
-                    name = obj.getString("name"),
-                    colorArgb = obj.getLong("colorArgb")
-                )
-            }.getOrNull()
-        }
-    }
-
-    private fun writeToDisk() {
-        val json = JSONArray()
-        parents.forEach { parent ->
-            json.put(
-                JSONObject().apply {
-                    put("slot", parent.slot.name)
-                    put("name", parent.name)
-                    put("colorArgb", parent.colorArgb)
-                }
-            )
-        }
-        file.writeText(json.toString())
-    }
+    private fun parentsCollection(familyId: String): CollectionReference =
+        firestore.collection(FAMILIES_COLLECTION).document(familyId).collection(PARENTS_SUBCOLLECTION)
 }
+
+private fun DocumentSnapshot.toParentOrNull(): Parent? = runCatching {
+    Parent(
+        slot = ParentSlot.valueOf(id),
+        name = getString("name").orEmpty(),
+        colorArgb = getLong("colorArgb") ?: 0xFF000000
+    )
+}.getOrElse {
+    Log.w(TAG, "Skipping malformed parent document $id", it)
+    null
+}
+
+private fun Parent.toFirestoreMap(): Map<String, Any> = mapOf(
+    "name" to name,
+    "colorArgb" to colorArgb
+)

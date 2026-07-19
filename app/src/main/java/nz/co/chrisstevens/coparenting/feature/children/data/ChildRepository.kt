@@ -1,74 +1,86 @@
 package nz.co.chrisstevens.coparenting.feature.children.data
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import nz.co.chrisstevens.coparenting.feature.children.domain.Child
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
+
+private const val TAG = "ChildRepository"
+private const val FAMILIES_COLLECTION = "families"
+private const val CHILDREN_SUBCOLLECTION = "children"
 
 /**
- * Stores children as a small JSON file in app-private storage, same pattern as ActivityRepository.
+ * Firestore-backed: children live at families/{familyId}/children, one document per child keyed
+ * by its own id. Same attach/detach/single-source-of-truth pattern as ActivityRepository - see
+ * that class for the full explanation.
  */
-class ChildRepository(context: Context) {
+class ChildRepository {
 
-    val file = File(context.filesDir, "children.json")
+    private val firestore = FirebaseFirestore.getInstance()
+    private var listenerRegistration: ListenerRegistration? = null
+    private var familyId: String? = null
 
-    val children = mutableStateListOf<Child>().apply { addAll(readFromDisk()) }
+    val children = mutableStateListOf<Child>()
 
-    fun reload() {
+    /** Starts (or restarts, if the family changed) the live listener for this family. */
+    fun attach(familyId: String) {
+        if (this.familyId == familyId && listenerRegistration != null) return
+        detach()
+        this.familyId = familyId
+        listenerRegistration = childrenCollection(familyId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "Children listener error for family $familyId", error)
+                return@addSnapshotListener
+            }
+            if (snapshot == null) return@addSnapshotListener
+            children.clear()
+            children.addAll(snapshot.documents.mapNotNull { it.toChildOrNull() })
+        }
+    }
+
+    /** Stops listening and clears local state - call when leaving the family/signing out. */
+    fun detach() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+        familyId = null
         children.clear()
-        children.addAll(readFromDisk())
     }
 
-    /** Wipes every child, local only - used by the developer "reset local data" tools. */
-    fun clear() {
-        children.clear()
-        file.delete()
-    }
+    fun addChild(child: Child) = writeChild(child)
 
-    fun addChild(child: Child) {
-        children.add(child)
-        writeToDisk()
-    }
-
-    fun updateChild(child: Child) {
-        val index = children.indexOfFirst { it.id == child.id }
-        if (index != -1) children[index] = child
-        writeToDisk()
-    }
+    fun updateChild(child: Child) = writeChild(child)
 
     fun deleteChild(childId: String) {
-        children.removeAll { it.id == childId }
-        writeToDisk()
+        val familyId = familyId ?: return
+        childrenCollection(familyId).document(childId).delete()
+            .addOnFailureListener { Log.e(TAG, "Failed to delete child $childId", it) }
     }
 
-    private fun readFromDisk(): List<Child> {
-        if (!file.exists()) return emptyList()
-        val json = JSONArray(file.readText())
-        return (0 until json.length()).mapNotNull { index ->
-            runCatching {
-                val obj = json.getJSONObject(index)
-                Child(
-                    id = obj.getString("id"),
-                    name = obj.getString("name"),
-                    colorArgb = obj.getLong("colorArgb")
-                )
-            }.getOrNull()
-        }
+    private fun writeChild(child: Child) {
+        val familyId = familyId ?: return
+        childrenCollection(familyId).document(child.id).set(child.toFirestoreMap())
+            .addOnFailureListener { Log.e(TAG, "Failed to save child ${child.id}", it) }
     }
 
-    private fun writeToDisk() {
-        val json = JSONArray()
-        children.forEach { child ->
-            json.put(
-                JSONObject().apply {
-                    put("id", child.id)
-                    put("name", child.name)
-                    put("colorArgb", child.colorArgb)
-                }
-            )
-        }
-        file.writeText(json.toString())
-    }
+    private fun childrenCollection(familyId: String): CollectionReference =
+        firestore.collection(FAMILIES_COLLECTION).document(familyId).collection(CHILDREN_SUBCOLLECTION)
 }
+
+private fun DocumentSnapshot.toChildOrNull(): Child? = runCatching {
+    Child(
+        id = id,
+        name = getString("name").orEmpty(),
+        colorArgb = getLong("colorArgb") ?: 0xFF000000
+    )
+}.getOrElse {
+    Log.w(TAG, "Skipping malformed child document $id", it)
+    null
+}
+
+private fun Child.toFirestoreMap(): Map<String, Any> = mapOf(
+    "name" to name,
+    "colorArgb" to colorArgb
+)

@@ -1,6 +1,9 @@
 package nz.co.chrisstevens.coparenting.feature.family.data
 
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import nz.co.chrisstevens.coparenting.core.firebase.awaitResult
 import nz.co.chrisstevens.coparenting.feature.family.domain.Family
 import com.google.firebase.firestore.CollectionReference
@@ -8,33 +11,62 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.ListenerRegistration
 
 private const val TAG = "FamilyRepository"
 private const val FAMILIES_COLLECTION = "families"
 private const val USERS_COLLECTION = "users"
+private const val PARENTS_SUBCOLLECTION = "parents"
 private const val JOIN_CODE_LENGTH = 8
 
 /** Excludes 0, O, I, 1 - characters that are easy to mix up when read off a phone screen. */
 private const val JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-/**
- * Subcollections that would live under families/{familyId} once cloud syncing of calendar data
- * is implemented. Nothing writes to these yet - everything is still local-only JSON - so
- * cleaning them up today is always a no-op. It's here so family/account deletion doesn't leave
- * orphaned data behind once that syncing exists, without needing to touch this file again then.
- */
+/** Every subcollection that lives under families/{familyId} - cleaned up together when a family is deleted. */
 private val FAMILY_SUBCOLLECTIONS = listOf("activities", "children", "parents", "parentAssignments")
 
 class FamilyNotFoundException(message: String) : Exception(message)
 
 /**
- * Talks to Firestore directly for the one thing that's genuinely shared right now - family
- * membership. It never touches activities, children, or parent assignments; those stay in the
- * local JSON repositories exactly as before. No syncing happens here, just membership.
+ * Talks to Firestore for family membership (create/join/leave) and, via [attach]/[detach],
+ * keeps [currentFamily] live-updated so "family settings change" (join code, members, owner)
+ * shows up immediately - e.g. Settings' member list updates the moment someone else joins.
+ * Activities/children/parents/parentAssignments live in their own repositories, one Firestore
+ * subcollection each under this same family document; this class only touches the family
+ * document itself and the per-user family reference.
  */
 class FamilyRepository {
 
     private val firestore = FirebaseFirestore.getInstance()
+    private var listenerRegistration: ListenerRegistration? = null
+    private var familyId: String? = null
+
+    var currentFamily: Family? by mutableStateOf(null)
+        private set
+
+    /** Starts (or restarts, if the family changed) the live listener for this family document. */
+    fun attach(familyId: String) {
+        if (this.familyId == familyId && listenerRegistration != null) return
+        detach()
+        this.familyId = familyId
+        listenerRegistration = firestore.collection(FAMILIES_COLLECTION).document(familyId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Family listener error for family $familyId", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                currentFamily = snapshot.toFamily()
+            }
+    }
+
+    /** Stops listening and clears local state - call when leaving the family/signing out. */
+    fun detach() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+        familyId = null
+        currentFamily = null
+    }
 
     /** The family the given user already belongs to, or null if they don't have one yet. */
     suspend fun findFamilyForUser(uid: String): Family? {
@@ -54,6 +86,7 @@ class FamilyRepository {
             createdAt = System.currentTimeMillis()
         )
         familyRef.set(family.toFirestoreMap()).awaitResult()
+        seedDefaultParents(family.id)
         saveFamilyReference(ownerUid, family.id)
         family
     }.onFailure { Log.e(TAG, "Failed to create family", it) }
@@ -143,6 +176,19 @@ class FamilyRepository {
         if (snapshot.isEmpty) return
         val batch = firestore.batch()
         snapshot.documents.forEach { doc -> batch.delete(doc.reference) }
+        batch.commit().awaitResult()
+    }
+
+    /**
+     * Every new family starts with exactly two parents ("Parent 1"/"Parent 2", editable later
+     * from Settings) - the rest of the app assumes exactly two always exist, so they're seeded
+     * here rather than left for ParentRepository to invent on first read.
+     */
+    private suspend fun seedDefaultParents(familyId: String) {
+        val parentsRef = firestore.collection(FAMILIES_COLLECTION).document(familyId).collection(PARENTS_SUBCOLLECTION)
+        val batch = firestore.batch()
+        batch.set(parentsRef.document("ONE"), mapOf("name" to "Parent 1", "colorArgb" to 0xFF2196F3L))
+        batch.set(parentsRef.document("TWO"), mapOf("name" to "Parent 2", "colorArgb" to 0xFF4CAF50L))
         batch.commit().awaitResult()
     }
 

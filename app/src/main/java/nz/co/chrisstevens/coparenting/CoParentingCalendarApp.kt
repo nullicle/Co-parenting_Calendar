@@ -2,6 +2,7 @@ package nz.co.chrisstevens.coparenting
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,11 +22,9 @@ import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
 import nz.co.chrisstevens.coparenting.feature.children.ui.ChildrenScreen
 import nz.co.chrisstevens.coparenting.feature.family.data.FamilyRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.toFamilyErrorMessage
-import nz.co.chrisstevens.coparenting.feature.family.domain.Family
 import nz.co.chrisstevens.coparenting.feature.family.ui.FamilyOnboardingFlow
 import nz.co.chrisstevens.coparenting.feature.parent.data.ParentAssignmentRepository
 import nz.co.chrisstevens.coparenting.feature.parent.data.ParentRepository
-import nz.co.chrisstevens.coparenting.feature.settings.data.DataBackupManager
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreferenceRepository
 import nz.co.chrisstevens.coparenting.feature.settings.ui.SettingsScreen
 
@@ -34,15 +33,21 @@ private enum class AppScreen { CALENDAR, SETTINGS, CHILDREN }
 private sealed class FamilyCheckStatus {
     object Loading : FamilyCheckStatus()
     object NeedsOnboarding : FamilyCheckStatus()
-    data class Ready(val family: Family) : FamilyCheckStatus()
+    data class Ready(val familyId: String) : FamilyCheckStatus()
     data class Error(val message: String) : FamilyCheckStatus()
 }
 
 /**
  * Gated twice: no signed-in Firebase user means SignInScreen, full stop. Once signed in, we
  * check Firestore for existing family membership before letting anyone into the app - a new
- * user (or one who left/reset last time) is routed into FamilyOnboardingFlow instead. Neither
- * gate touches the local JSON repositories.
+ * user (or one who left/reset last time) is routed into FamilyOnboardingFlow instead.
+ *
+ * Once a family is found, a DisposableEffect attaches all five repositories' live Firestore
+ * listeners (family document + activities/children/parents/parentAssignments subcollections)
+ * for exactly as long as this branch stays in composition, detaching them - which also clears
+ * each repository's Compose state - the moment it doesn't (sign out, leave family, account
+ * deletion all route back through here). Keyed on familyId so switching families reattaches,
+ * but recomposition for any other reason doesn't recreate the listeners.
  */
 @Composable
 fun CoParentingCalendarApp(
@@ -51,7 +56,6 @@ fun CoParentingCalendarApp(
     parentRepository: ParentRepository,
     parentAssignmentRepository: ParentAssignmentRepository,
     themePreferenceRepository: ThemePreferenceRepository,
-    dataBackupManager: DataBackupManager,
     authRepository: AuthRepository,
     familyRepository: FamilyRepository
 ) {
@@ -67,7 +71,7 @@ fun CoParentingCalendarApp(
     LaunchedEffect(user.uid, retryTrigger) {
         familyStatus = try {
             val family = familyRepository.findFamilyForUser(user.uid)
-            if (family != null) FamilyCheckStatus.Ready(family) else FamilyCheckStatus.NeedsOnboarding
+            if (family != null) FamilyCheckStatus.Ready(family.id) else FamilyCheckStatus.NeedsOnboarding
         } catch (e: Exception) {
             FamilyCheckStatus.Error(e.toFamilyErrorMessage())
         }
@@ -83,10 +87,25 @@ fun CoParentingCalendarApp(
         FamilyCheckStatus.NeedsOnboarding -> FamilyOnboardingFlow(
             uid = user.uid,
             familyRepository = familyRepository,
-            onFamilyReady = { family -> familyStatus = FamilyCheckStatus.Ready(family) },
+            onFamilyReady = { family -> familyStatus = FamilyCheckStatus.Ready(family.id) },
             modifier = Modifier.fillMaxSize()
         )
         is FamilyCheckStatus.Ready -> {
+            DisposableEffect(status.familyId) {
+                activityRepository.attach(status.familyId)
+                childRepository.attach(status.familyId)
+                parentRepository.attach(status.familyId)
+                parentAssignmentRepository.attach(status.familyId)
+                familyRepository.attach(status.familyId)
+                onDispose {
+                    activityRepository.detach()
+                    childRepository.detach()
+                    parentRepository.detach()
+                    parentAssignmentRepository.detach()
+                    familyRepository.detach()
+                }
+            }
+
             var screen by rememberSaveable(stateSaver = enumSaver()) { mutableStateOf(AppScreen.CALENDAR) }
 
             when (screen) {
@@ -99,15 +118,10 @@ fun CoParentingCalendarApp(
                     modifier = Modifier.fillMaxSize()
                 )
                 AppScreen.SETTINGS -> SettingsScreen(
-                    activityRepository = activityRepository,
-                    childRepository = childRepository,
                     parentRepository = parentRepository,
-                    parentAssignmentRepository = parentAssignmentRepository,
                     themePreferenceRepository = themePreferenceRepository,
-                    dataBackupManager = dataBackupManager,
                     authRepository = authRepository,
                     familyRepository = familyRepository,
-                    family = status.family,
                     onBack = { screen = AppScreen.CALENDAR },
                     onOpenChildren = { screen = AppScreen.CHILDREN },
                     onFamilyDeleted = { familyStatus = FamilyCheckStatus.NeedsOnboarding },

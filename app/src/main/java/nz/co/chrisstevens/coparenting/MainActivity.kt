@@ -12,28 +12,18 @@ import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
 import nz.co.chrisstevens.coparenting.feature.family.data.FamilyRepository
 import nz.co.chrisstevens.coparenting.feature.parent.data.ParentAssignmentRepository
 import nz.co.chrisstevens.coparenting.feature.parent.data.ParentRepository
-import nz.co.chrisstevens.coparenting.feature.settings.data.DataBackupManager
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreference
 import nz.co.chrisstevens.coparenting.feature.settings.data.ThemePreferenceRepository
 
 class MainActivity : ComponentActivity() {
 
-    private val activityRepository by lazy { ActivityRepository(applicationContext) }
-    private val childRepository by lazy { ChildRepository(applicationContext) }
-    private val parentRepository by lazy { ParentRepository(applicationContext) }
-    private val parentAssignmentRepository by lazy { ParentAssignmentRepository(applicationContext) }
+    private val activityRepository by lazy { ActivityRepository() }
+    private val childRepository by lazy { ChildRepository() }
+    private val parentRepository by lazy { ParentRepository() }
+    private val parentAssignmentRepository by lazy { ParentAssignmentRepository() }
     private val themePreferenceRepository by lazy { ThemePreferenceRepository(applicationContext) }
     private val authRepository by lazy { AuthRepository() }
     private val familyRepository by lazy { FamilyRepository() }
-    private val dataBackupManager by lazy {
-        DataBackupManager(
-            context = applicationContext,
-            activityRepository = activityRepository,
-            childRepository = childRepository,
-            parentRepository = parentRepository,
-            parentAssignmentRepository = parentAssignmentRepository
-        )
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,7 +41,6 @@ class MainActivity : ComponentActivity() {
                     parentRepository = parentRepository,
                     parentAssignmentRepository = parentAssignmentRepository,
                     themePreferenceRepository = themePreferenceRepository,
-                    dataBackupManager = dataBackupManager,
                     authRepository = authRepository,
                     familyRepository = familyRepository
                 )
