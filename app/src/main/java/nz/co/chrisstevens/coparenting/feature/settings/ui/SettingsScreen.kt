@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,9 +52,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import nz.co.chrisstevens.coparenting.core.designsystem.ColorDotLabel
 import nz.co.chrisstevens.coparenting.core.designsystem.SettingsSection
-import nz.co.chrisstevens.coparenting.core.firebase.FirebaseConnectionTester
-import nz.co.chrisstevens.coparenting.core.firebase.FirestoreTestResult
-import nz.co.chrisstevens.coparenting.core.firebase.isFirebaseAppInitialized
 import nz.co.chrisstevens.coparenting.feature.auth.data.AuthRepository
 import nz.co.chrisstevens.coparenting.feature.auth.ui.GoogleSignInButton
 import nz.co.chrisstevens.coparenting.feature.children.data.ChildRepository
@@ -102,10 +98,6 @@ fun SettingsScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "unknown"
     }
-
-    val firebaseConnectionTester = remember { FirebaseConnectionTester() }
-    val isFirebaseConnected = remember { isFirebaseAppInitialized() }
-    var firestoreTestResult by remember { mutableStateOf(FirestoreTestResult.NOT_RUN) }
 
     Scaffold(
         modifier = modifier,
@@ -341,43 +333,6 @@ fun SettingsScreen(
                     )
                 }
             }
-
-            SettingsSection(title = "Firebase Status") {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FirebaseStatusRow(
-                        label = "Firebase Connected",
-                        value = if (isFirebaseConnected) "✅" else "❌"
-                    )
-                    FirebaseStatusRow(
-                        label = "Signed In",
-                        value = if (authRepository.currentUser != null) "✅" else "❌"
-                    )
-                    FirebaseStatusRow(
-                        label = "Firestore Test",
-                        value = when (firestoreTestResult) {
-                            FirestoreTestResult.NOT_RUN -> "Not run"
-                            FirestoreTestResult.RUNNING -> "Testing…"
-                            FirestoreTestResult.PASS -> "Pass"
-                            FirestoreTestResult.FAIL -> "Fail"
-                        }
-                    )
-                    Button(
-                        onClick = {
-                            firestoreTestResult = FirestoreTestResult.RUNNING
-                            firebaseConnectionTester.testConnection { result -> firestoreTestResult = result }
-                        },
-                        enabled = firestoreTestResult != FirestoreTestResult.RUNNING,
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) { Text("Test Firebase Connection") }
-                    Text(
-                        text = "Development only - writes and reads back a test document. " +
-                            "Remove this section once real syncing is implemented.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
         }
     }
 
@@ -430,17 +385,6 @@ fun SettingsScreen(
                 onDismiss = { showDeleteAccountDialog = false }
             )
         }
-    }
-}
-
-@Composable
-private fun FirebaseStatusRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
